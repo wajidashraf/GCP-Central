@@ -21,6 +21,9 @@ A complete reference for new developers joining this project. Read this document
 13. [API Routes Reference](#13-api-routes-reference)
 14. [Cloudinary File Uploads](#14-cloudinary-file-uploads)
 15. [Adding New Features — End-to-End Checklist](#15-adding-new-features--end-to-end-checklist)
+16. [UI Components](#16-ui-components)
+17. [Authentication — Structure & Roadmap](#17-authentication--structure--roadmap)
+18. [Implementation Status](#18-implementation-status)
 
 ---
 
@@ -34,48 +37,87 @@ A complete reference for new developers joining this project. Read this document
 
 ```
 gcp-central/
-├── app/                        # Next.js App Router
-│   ├── api/                    # REST API route handlers
-│   │   └── company/route.ts    # Company CRUD endpoints
-│   ├── layout.tsx              # Root layout (fonts, metadata)
-│   └── page.tsx                # Homepage
+├── app/                              # Next.js App Router
+│   ├── api/
+│   │   ├── auth/
+│   │   │   └── [...nextauth]/
+│   │   │       └── route.ts          # NextAuth handler (STUB — not yet active)
+│   │   └── company/
+│   │       └── route.ts              # Company CRUD endpoints (POST + GET)
+│   ├── admin/
+│   │   └── page.tsx                  # Admin panel (STUB — Sprint 3)
+│   ├── dashboard/
+│   │   └── page.tsx                  # Dashboard (STUB — Sprint 3)
+│   ├── login/
+│   │   └── page.tsx                  # Login page (STUB — needs NextAuth)
+│   ├── requests/
+│   │   └── page.tsx                  # Review Requests listing (STUB — Sprint 1)
+│   ├── submit/
+│   │   └── page.tsx                  # Create Request — form type selector
+│   │   # TODO: add /submit/gcpc/[type] and /submit/gcp/[type] sub-routes
+│   ├── layout.tsx                    # Root layout — wraps all pages in AppShell
+│   ├── page.tsx                      # Home page (IMPLEMENTED)
+│   └── globals.css                   # Full design system (CSS custom properties)
 │
-├── lib/                        # Shared server-side utilities
-│   ├── prisma.ts               # Singleton Prisma client
-│   ├── db.ts                   # Mongoose connection helper (legacy/parallel)
-│   ├── env.ts                  # Typed environment variable config
-│   ├── cloudinary.ts           # Cloudinary upload/delete helpers
-│   ├── constants.ts            # App-wide constants (HTTP codes, API paths)
-│   ├── utils.ts                # Generic utility functions
-│   └── validations/            # Zod schema definitions (one file per model)
+├── lib/                              # Shared server-side utilities
+│   ├── prisma.ts                     # Singleton Prisma client
+│   ├── db.ts                         # Mongoose connection helper (for aggregations)
+│   ├── env.ts                        # Typed environment variable config
+│   ├── cloudinary.ts                 # Cloudinary upload/delete helpers
+│   ├── constants.ts                  # App-wide constants
+│   ├── utils.ts                      # Generic utility functions
+│   └── validations/                  # Zod schemas (one file per domain model)
 │       └── company.ts
 │
 ├── src/
-│   └── constants/
-│       └── enums/              # All enum constants (selects, dropdowns, types)
-│           ├── index.ts        # Barrel export — always import from here
-│           ├── types.ts        # SelectOption<T> and helper types
-│           ├── companyCodes.ts # 16 company codes
-│           ├── sectors.ts      # 7 business sectors
-│           ├── organizational.ts # Roles, decision codes
-│           ├── status.ts       # Engagement, project, SLA statuses
-│           ├── procurement.ts  # Procurement methods, registration, categories
-│           ├── requestStatus.ts # 20-state request workflow
-│           ├── matters.ts      # 14 matter types, 9 outcomes
-│           ├── soaCodes.ts     # 14 SOA codes
-│           └── utils.ts        # Enum helper functions
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── app-shell.tsx         # Root layout wrapper (header + main + footer)
+│   │   │   ├── header.tsx            # Top navigation bar (IMPLEMENTED)
+│   │   │   └── footer.tsx            # Footer with form type reference (IMPLEMENTED)
+│   │   └── ui/
+│   │       └── button.tsx            # Typed Button component (href → Link)
+│   │       # TODO: add Input, Select, Badge, Modal, Toast components
+│   │
+│   ├── config/
+│   │   └── navigation.ts             # Role-filtered nav items
+│   │
+│   ├── constants/
+│   │   └── enums/                    # All select/dropdown values
+│   │       ├── index.ts              # Barrel export — always import from here
+│   │       ├── types.ts              # SelectOption<T> type
+│   │       ├── companyCodes.ts       # 16 company codes
+│   │       ├── sectors.ts            # 7 business sectors
+│   │       ├── organizational.ts     # Roles, decision codes
+│   │       ├── status.ts             # Engagement, project, SLA statuses
+│   │       ├── procurement.ts        # Procurement methods, request categories
+│   │       ├── requestStatus.ts      # 20-state request workflow
+│   │       ├── matters.ts            # 14 matter types, 9 outcomes
+│   │       ├── soaCodes.ts           # 14 SOA codes
+│   │       └── utils.ts              # getLabelByValue, isValidEnumValue, etc.
+│   │
+│   ├── lib/
+│   │   └── auth/
+│   │       ├── auth.config.ts        # NextAuth config (STUB — ready to uncomment)
+│   │       └── get-current-user.ts   # Currently returns hardcoded mock user
+│   │
+│   ├── types/
+│   │   └── auth.ts                   # CurrentUser, UserRole types
+│   │
+│   └── UI/
+│       └── theme.ts                  # Design tokens (JS/TS mirror of globals.css)
 │
 ├── prisma/
-│   ├── schema.prisma           # Prisma data models
-│   ├── seed.mjs                # Idempotent seed script
-│   └── company-records.json   # Canonical company seed data
+│   ├── schema.prisma                 # Prisma models (MongoDB)
+│   ├── seed.mjs                      # Idempotent seed script
+│   └── company-records.json          # 16 canonical company records
 │
-├── public/                     # Static assets
-├── lib/env.ts                  # Typed env config
-├── .env.local                  # Local secrets (not committed)
+├── public/                           # Static assets
+├── tailwind.config.ts                # Custom design system tokens for Tailwind
+├── .env.local                        # Local secrets (never commit)
 ├── package.json
-├── tsconfig.json
-└── DEVELOPER_GUIDE.md          # This file
+├── tsconfig.json                     # @/* path alias → project root
+└── DEVELOPER_GUIDE.md
 ```
 
 ---
@@ -89,8 +131,9 @@ gcp-central/
 | ORM | Prisma 6 | Type-safe DB access |
 | Validation | Zod 4 | Runtime schema validation |
 | File Storage | Cloudinary | Image and document uploads |
-| Styling | Tailwind CSS 4 | Utility-first CSS |
+| Styling | Tailwind CSS 4 + CSS Custom Properties | Utility-first CSS + design system |
 | Language | TypeScript 5 (strict) | Type safety throughout |
+| Auth | NextAuth.js (PENDING) | Session management, RBAC |
 
 ---
 
@@ -951,6 +994,155 @@ npm run build
 ```
 
 Both must pass with zero errors before opening a PR.
+
+---
+
+## 16. UI Components
+
+Reusable components live in `src/components/ui/`. Always prefer these over writing raw HTML.
+
+### Button
+
+File: `src/components/ui/button.tsx`
+
+```typescript
+import Button from '@/src/components/ui/button';
+
+// Renders a <button>
+<Button variant="primary" size="lg" onClick={handleSave}>Save</Button>
+
+// Renders a <Link> (Next.js)
+<Button variant="secondary" href="/requests">View All</Button>
+
+// Loading state
+<Button variant="primary" loading={isPending}>Saving...</Button>
+```
+
+Variants: `primary` | `secondary` | `ghost` | `accent` | `danger`
+Sizes: `sm` | `md` | `lg` | `xl`
+
+All variants map directly to the `.btn` CSS classes in `globals.css`.
+
+### Planned UI Components (TODO)
+
+Create these in `src/components/ui/` as the project grows:
+- `input.tsx` — wraps `.input` class with error state and label
+- `select.tsx` — wraps `.select` class
+- `badge.tsx` — wraps `.badge` and status variants
+- `modal.tsx` — wraps `.modal-backdrop` + `.modal`
+- `toast.tsx` — notification system
+- `upload-zone.tsx` — wraps `.upload-zone` for Cloudinary uploads
+
+---
+
+## 17. Authentication — Structure & Roadmap
+
+Authentication is **not yet implemented**. The structure is in place and ready to activate.
+
+### What exists today
+
+| File | Purpose |
+|---|---|
+| `src/types/auth.ts` | `CurrentUser` and `UserRole` TypeScript types |
+| `src/lib/auth/get-current-user.ts` | Returns a **hardcoded mock user** — replace with real session |
+| `src/lib/auth/auth.config.ts` | NextAuth config — fully commented out, ready to activate |
+| `app/api/auth/[...nextauth]/route.ts` | NextAuth API handler stub (returns 501) |
+| `app/login/page.tsx` | Login UI shell — disabled, pending NextAuth wiring |
+
+### Roles (already typed)
+
+```typescript
+// src/types/auth.ts
+export type UserRole =
+  | 'requestor'    // Submits requests
+  | 'verifier'     // Verifies request completeness (GCP staff)
+  | 'reviewer'     // Manages GCP/GCPC engagement sessions
+  | 'committee'    // Main Committee — read-only dashboard access
+  | 'admin';       // Full system access + role management
+```
+
+### To implement NextAuth
+
+1. Install: `npm install next-auth@beta @auth/prisma-adapter`
+2. Add env vars to `.env.local` (see `auth.config.ts` for the full list)
+3. Add a `User` model to `prisma/schema.prisma` with a `role` field
+4. Uncomment the NextAuth config in `src/lib/auth/auth.config.ts`
+5. Replace `app/api/auth/[...nextauth]/route.ts` with the real handler
+6. Update `get-current-user.ts` to read from the NextAuth session
+7. Create `app/(auth)/layout.tsx` to give auth pages their own layout (no shell)
+
+### Route protection pattern (when auth is live)
+
+```typescript
+// In any protected Server Component page:
+import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { redirect } from 'next/navigation';
+
+export default async function ProtectedPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/dashboard'); // role guard
+  // ...
+}
+```
+
+---
+
+## 18. Implementation Status
+
+Use this section to track what is live, what is in progress, and what is pending.
+
+### ✅ Implemented
+
+| Feature | File(s) | BRD Reference |
+|---|---|---|
+| Design system CSS | `app/globals.css` | NFR4 |
+| Design tokens (Tailwind) | `tailwind.config.ts` | NFR4 |
+| Design tokens (TS) | `src/UI/theme.ts` | NFR4 |
+| App shell layout | `src/components/layout/app-shell.tsx` | — |
+| Header with role-based nav | `src/components/layout/header.tsx` | NFR4 |
+| Footer | `src/components/layout/footer.tsx` | NFR4 |
+| Home page | `app/page.tsx` | NFR4 |
+| Company API (POST + GET) | `app/api/company/route.ts` | — |
+| Company Zod schema | `lib/validations/company.ts` | — |
+| Prisma singleton | `lib/prisma.ts` | — |
+| Cloudinary helpers | `lib/cloudinary.ts` | FR2 |
+| All enum constants | `src/constants/enums/` | — |
+| Navigation config | `src/config/navigation.ts` | — |
+| Auth types | `src/types/auth.ts` | FR17 |
+| Auth structure stubs | `src/lib/auth/auth.config.ts` | FR17 |
+| Button UI component | `src/components/ui/button.tsx` | — |
+| MongoDB seed (companies) | `prisma/seed.mjs` | — |
+
+### 🚧 Stubs (structure exists, logic pending)
+
+| Feature | File(s) | Sprint | BRD |
+|---|---|---|---|
+| NextAuth authentication | `src/lib/auth/auth.config.ts`, `app/api/auth/[...nextauth]/route.ts` | Pre-Sprint 1 | FR17 |
+| Login page | `app/login/page.tsx` | Pre-Sprint 1 | — |
+| Submit Request page | `app/submit/page.tsx` | Sprint 1 | FR1, FR3 |
+| Review Requests page | `app/requests/page.tsx` | Sprint 1 | FR4, FR5 |
+| Dashboard page | `app/dashboard/page.tsx` | Sprint 3 | FR18 |
+| Admin page | `app/admin/page.tsx` | Sprint 3 | FR17, FR19 |
+
+### ❌ Not yet started
+
+| Feature | Sprint | BRD Reference |
+|---|---|---|
+| 13 request form pages (GCPC: RTP, PBL, JVP, ST/SP, CAA, PCCA, PP, VAP, Others; GCP: R-PCCA, CI, CPR, Others) | Sprint 1 | FR1, FR3 |
+| Verifier review + rework flow | Sprint 1 | FR4 |
+| GCP/GCPC routing logic | Sprint 1 | FR5 |
+| Engagement session scheduling | Sprint 1 | FR6, FR10 |
+| Summary Review Report generation | Sprint 1 | FR7, FR11 |
+| Acknowledgement letter generation | Sprint 1 | FR9 |
+| Endorsement letter generation | Sprint 1 | FR13 |
+| Automated notifications | Sprint 2 | FR14 |
+| Timestamp tracking | Sprint 2 | FR15 |
+| SLA violation flagging | Sprint 2 | FR16 |
+| Role management (admin) | Sprint 3 | FR17 |
+| Dashboard visualisations | Sprint 3 | FR18 |
+| SLA configuration panel | Sprint 3 | FR19 |
+| PDF/Excel export | Sprint 3 | FR20 |
 
 ---
 

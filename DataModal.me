@@ -1,0 +1,454 @@
+# GCP Central Data Model (MongoDB) + Form Submission Guide
+
+This document reviews your draft and defines a practical MongoDB structure for submitting forms.
+It is aligned with BRD workflow expectations (request routing, status transitions, review outcomes, SLA timestamps, attachments).
+
+## 1) Review of your draft (what to adjust)
+
+Your draft is a good start. These changes are important before implementation:
+
+1. `requestType` must cover all BRD forms, not only `RTP/PBL/JVP/CAA`.
+2. Keep **workflow status** and **outcome code** separate:
+   - status tracks lifecycle (`New`, `R`, etc.)
+   - outcome tracks decision (`ACK`, `E`, `RS`, `NC`, etc.)
+3. `R01`, `R02` should not be hardcoded strings in enum:
+   - store `status = "R"` and `engagementRound = 1,2,3...`
+4. Store full audit history in a dedicated event log collection.
+5. Keep SLA data explicit (`stage`, `threshold`, `startedAt`, `breachedAt`).
+
+## 2) Core enums
+
+```ts
+export const USER_ROLES = [
+  "Requestor",
+  "Verifier",
+  "Reviewer",
+  "GCP",
+  "GCPC",
+  "Main_Committee",
+  "Admin",
+] as const;
+
+export const REQUEST_TYPES = [
+  // GCPC
+  "RTP", "PBL", "JVP", "STSP", "CAA", "PCCA", "PP", "VAP", "OTHERS_GCPC",
+  // GCP
+  "RPCCA", "CI", "CPR", "OTHERS_GCP",
+] as const;
+
+export const ROUTING_TYPES = ["GCP", "GCPC"] as const;
+
+export const REQUEST_STATUS = [
+  "New",        // submitted, waiting verification
+  "Verified",   // verification passed
+  "Rework",     // sent back for amendment
+  "R",          // engagement required (round kept separately)
+  "FR",         // for record (closed)
+  "Closed",     // terminal state marker
+] as const;
+
+export const OUTCOME_CODES = [
+  "ACK", "E", "FA", "RS", "NC", "NC3", "NC4", "W", null,
+] as const;
+
+export const REVIEW_CODES = ["1", "2", "3", "4", "W", null] as const;
+```
+
+## 3) Collections design
+
+## 3.1 `users`
+
+```ts
+{
+  _id: ObjectId,
+  name: string,
+  email: string,          // unique
+  passwordHash?: string,  // for credentials/testing only
+  role: USER_ROLES[number],
+  isActive: boolean,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+Indexes:
+- `{ email: 1 } unique`
+- `{ role: 1, isActive: 1 }`
+
+## 3.2 `companies`
+
+```ts
+{
+  _id: ObjectId,
+  companyCode: string,    // unique
+  companyName: string,
+  sector: string,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## 3.3 `projects`
+
+```ts
+{
+  _id: ObjectId,
+  companyId: ObjectId,         // ref companies
+  projectCode: string,         // unique
+  projectName: string,
+  clientName?: string,
+  projectStatus: "Inactive" | "Active" | "Completed" | "Dead",
+  createdFromRequestId?: ObjectId, // e.g. RTP accepted
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+Indexes:
+- `{ projectCode: 1 } unique`
+- `{ companyId: 1, projectStatus: 1 }`
+
+## 3.4 `requests` (base parent schema with discriminator key)
+
+```ts
+{
+  _id: ObjectId,
+  requestNo: string,                 // unique generated id
+  requestType: REQUEST_TYPES[number],// discriminator key
+  routingType: ROUTING_TYPES[number],
+
+  requestorId: ObjectId,             // ref users
+  companyId: ObjectId,               // ref companies
+  projectId: ObjectId,               // ref projects
+  projectCodeSnapshot: string,       // keep historical value
+
+  status: REQUEST_STATUS[number],    // New / Verified / Rework / R / FR / Closed
+  engagementRound: number,           // 0 by default; if status=R then 1..n
+  reviewCode: REVIEW_CODES[number],  // 1/2/3/4/W
+  outcomeCode: OUTCOME_CODES[number],// ACK/E/FA/RS/NC/NC3/NC4/W
+
+  acknowledgement: boolean,          // must be true on final submit
+
+  files: [{
+    fileName: string,
+    url: string,
+    mimeType: string,
+    sizeBytes: number,
+    cloudinaryId?: string,
+    uploadedBy: ObjectId,
+    uploadedAt: Date
+  }],
+
+  // key process timestamps
+  timeline: {
+    submittedAt?: Date,
+    verifiedAt?: Date,
+    engagementScheduledAt?: Date,
+    engagementCompletedAt?: Date,
+    summaryReportSignedAt?: Date,
+    acceptanceSignedAt?: Date,
+    ackLetterGeneratedAt?: Date,
+    endorsementLetterGeneratedAt?: Date
+  },
+
+  // SLA tracking per active stage
+  sla: {
+    stage?: string,
+    thresholdHours?: number,
+    startedAt?: Date,
+    dueAt?: Date,
+    breachedAt?: Date,
+    isViolated: boolean
+  },
+
+  isDeleted: boolean,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+Indexes:
+- `{ requestNo: 1 } unique`
+- `{ requestType: 1, routingType: 1 }`
+- `{ requestorId: 1, createdAt: -1 }`
+- `{ companyId: 1, projectId: 1, createdAt: -1 }`
+- `{ status: 1, outcomeCode: 1 }`
+- `{ "sla.isViolated": 1, updatedAt: -1 }`
+
+## 3.5 `request_events` (audit trail)
+
+```ts
+{
+  _id: ObjectId,
+  requestId: ObjectId,      // ref requests
+  eventType: string,        // SUBMITTED, VERIFIED, REWORK_REQUESTED, STATUS_CHANGED...
+  fromStatus?: string,
+  toStatus?: string,
+  actorId: ObjectId,        // ref users
+  comment?: string,
+  meta?: Record<string, any>,
+  createdAt: Date
+}
+```
+
+Index:
+- `{ requestId: 1, createdAt: 1 }`
+
+## 3.6 `engagement_sessions`
+
+```ts
+{
+  _id: ObjectId,
+  requestId: ObjectId,
+  round: number,                    // 1,2,3...
+  scheduledAt: Date,
+  completedAt?: Date,
+  status: "Scheduled" | "Completed" | "Cancelled",
+  invitedUserIds: ObjectId[],
+  notes?: string,
+  createdBy: ObjectId,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## 3.7 `summary_review_reports`
+
+```ts
+{
+  _id: ObjectId,
+  requestId: ObjectId,
+  engagementSessionId: ObjectId,
+  part2Text: string,
+  part3Text: string,
+  reviewCode: "1" | "2" | "3" | "4" | "W",
+  reviewerId: ObjectId,
+  signedAt?: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## 4) Form-specific discriminator payloads
+
+Use one parent `requests` model with discriminators.
+
+## 4.1 RTP
+
+```ts
+{
+  clientName: string,
+  descriptionOfMatters: "Registration of Tender List" | "Registration of Proposal List",
+  requestTitle: string,              // max 100 chars
+  tenderClosingDate?: Date,          // required when Tender List selected
+  specialProjectWaiver: boolean
+}
+```
+
+## 4.2 PBL
+
+```ts
+{
+  date: Date,
+  methodOfProcurement: "Selective Tendering" | "Direct negotiation",
+  prospectiveBidders: [{
+    companyName: string,
+    pic: string,
+    contact: string,
+    sources: string,
+    recommendedBy: string
+  }],
+  justificationForLessBidders: string,
+  reviewPart3?: string               // reviewer text
+}
+```
+
+## 4.3 JVP
+
+```ts
+{
+  reviewNo: string,
+  dateOfReview?: Date,
+  picDetails: {
+    teamLeader: string,
+    financialMatters: string,
+    technicalMatters: string,
+    procurementMatters: string,
+    costingAndEstimationMatters: string,
+    implementationStage: string
+  },
+  backgroundOfCollab: string,
+  scopeOfCollab: string,
+  proposedStructure?: string,
+  proposedStructureImage?: {
+    url: string,
+    cloudinaryId?: string
+  },
+  keyTerms?: string,
+  financialOverview?: {
+    initialCapitalRequirement?: string,
+    projectValue?: string,
+    forecastedReturns?: string,
+    cashflowForecast?: string,
+    fundingStrategy?: string,
+    financialAssumptions?: string
+  },
+  technicalCapabilities?: string,
+  workPackagesDivision?: string,
+  resourcesContribution?: string,
+  costStructureBreakdown?: string,
+  riskReviewMitigation?: string,
+  reviewPart3?: string
+}
+```
+
+## 4.4 CAA
+
+```ts
+{
+  tenderPrice: number,
+  contractNo?: string,
+  finalContractAmount?: number,
+  estimatedBudgetCost?: number,
+  estimatedMarginPercent?: number,
+  loaDate?: Date,
+  tenderProposalRefNo?: string,
+  contractCommencementDate?: Date,
+  contractCompletionDate?: Date,
+  contractPeriodDays?: number,
+
+  criticalActivityMilestones: [{
+    no: number,
+    activity: string,
+    dlp?: string,
+    ladRate?: number
+  }],
+
+  paymentTerm?: string,
+  typeOfContract?: string,
+  formOfContract?: string,
+  projectDirector?: string,
+  contactPersonAtSite?: string
+}
+```
+
+> Note: For remaining BRD forms (`STSP`, `PCCA`, `PP`, `VAP`, `RPCCA`, `CI`, `CPR`, `OTHERS_GCPC`, `OTHERS_GCP`) use same discriminator pattern with dedicated field blocks.
+
+## 5) Form submission flow to MongoDB
+
+## Step 1: Create draft / initial request
+
+`POST /api/requests`
+
+Request body:
+
+```json
+{
+  "requestType": "RTP",
+  "routingType": "GCPC",
+  "requestorId": "665f9b0c9f7e1e6a6cc6a001",
+  "companyId": "665f9b0c9f7e1e6a6cc6a010",
+  "projectId": "665f9b0c9f7e1e6a6cc6a020",
+  "acknowledgement": false,
+  "formData": {
+    "clientName": "ABC Client",
+    "descriptionOfMatters": "Registration of Tender List",
+    "requestTitle": "Tender Registration for Phase 2",
+    "tenderClosingDate": "2026-04-10T00:00:00.000Z",
+    "specialProjectWaiver": false
+  }
+}
+```
+
+Server action:
+- generate `requestNo`
+- set `status = "New"`
+- create first event in `request_events`
+
+## Step 2: Upload files
+
+`POST /api/requests/:id/files`
+
+Request body:
+
+```json
+{
+  "files": [
+    {
+      "fileName": "Tender-Form.pdf",
+      "url": "https://res.cloudinary.com/.../Tender-Form.pdf",
+      "mimeType": "application/pdf",
+      "sizeBytes": 452311,
+      "cloudinaryId": "gcp-central/req-123/tender-form"
+    }
+  ]
+}
+```
+
+Server validation:
+- max files per request = 10
+- max file size = 10MB (or project-configurable if policy changes)
+
+## Step 3: Autosave edits
+
+`PATCH /api/requests/:id`
+
+Request body:
+
+```json
+{
+  "formData": {
+    "requestTitle": "Updated title"
+  }
+}
+```
+
+## Step 4: Final submit
+
+`POST /api/requests/:id/submit`
+
+Rules:
+- required form fields must pass validation
+- `acknowledgement` must be `true`
+- attachments required by form type must exist
+- set `timeline.submittedAt`
+
+## Step 5: Verification / review workflow updates
+
+Examples:
+- verifier approve -> `status = "Verified"`
+- verifier asks changes -> `status = "Rework"`
+- engagement created -> `status = "R"`, `engagementRound = 1..n`
+- review result updates `reviewCode` + `outcomeCode`
+- close request -> `status = "Closed"` (or `FR` where applicable)
+
+Every transition writes one `request_events` record.
+
+## 6) Recommended Mongoose implementation pattern
+
+1. Parent model: `Request` with `discriminatorKey: "requestType"`.
+2. Child models: `RTPRequest`, `PBLRequest`, `JVPRequest`, `CAARequest`, etc.
+3. Keep common fields only in parent model.
+4. Keep form-only fields in discriminator models.
+5. Keep workflow/audit in separate collections (`request_events`, `engagement_sessions`, `summary_review_reports`).
+
+## 7) Minimal validation checklist
+
+- `requestType`, `routingType`, `requestorId`, `companyId`, `projectId` required.
+- `requestTitle` max 100 chars for RTP.
+- conditional required:
+  - `tenderClosingDate` required when RTP matters = Tender List.
+- file constraints:
+  - max 10 files
+  - max 10MB each
+- before final submit:
+  - `acknowledgement === true`
+  - required fields complete
+
+---
+
+This model gives you:
+- clean form extensibility
+- BRD-compatible statuses/outcomes
+- strong audit and SLA tracking
+- reliable API-based submission flow to MongoDB.

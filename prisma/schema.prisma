@@ -14,4 +14,79 @@ model Company {
   sector      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  requests Request[]
+  projects Project[]
+}
+
+model Request {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  requestNo       String    @unique
+  requestType     String
+  routingType     String
+  requestTitle    String
+  category        String
+  requestorId     String
+  requestorName   String
+  requestorEmail  String
+  companyId       String    @db.ObjectId
+  companyCode     String
+  companyName     String
+  status          String    @default("Draft")
+  acknowledgement Boolean   @default(false)
+  submittedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company  Company    @relation(fields: [companyId], references: [id])
+  rtp      RtpRequest?
+  projects Project[]
+
+  @@index([requestType, routingType])
+  @@index([requestorEmail])
+  @@index([companyId])
+}
+
+model Project {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId            String   @db.ObjectId
+  companyCode          String
+  companyName          String
+  projectName          String
+  createdFromRequestId String?  @db.ObjectId
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id])
+  request     Request?     @relation(fields: [createdFromRequestId], references: [id])
+  rtpRequests RtpRequest[]
+
+  @@index([companyId])
+  @@index([createdFromRequestId])
+  @@index([projectName])
+}
+
+model RtpRequest {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId          String   @unique @db.ObjectId
+  clientName         String
+  registrationType   Int
+  tenderClosingDate  DateTime?
+  projectName        String
+  projectDescription String
+  specialProject     Boolean  @default(false)
+  documentUrl        String?
+  documentPublicId   String?
+  documentFileName   String?
+  documentMimeType   String?
+  documentSizeBytes  Int?
+  projectId          String?  @db.ObjectId
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  request Request  @relation(fields: [requestId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([projectName])
 }
