@@ -1,10 +1,8 @@
-export const APP_NAME = "GCP Central";
-export const APP_DESCRIPTION = "Secure file and image management platform";
+export const APP_NAME = "GCP Nexus";
 
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: "/api/auth/callback/credentials",
-    REGISTER: "/api/auth/register",
     LOGOUT: "/api/auth/signout",
   },
   UPLOAD: "/api/upload",
