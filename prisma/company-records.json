@@ -1,0 +1,82 @@
+[
+  {
+    "companyName": "Aimstral Sdn Bhd1",
+    "companyCode": "HIM01",
+    "sector": "IT"
+  },
+  {
+    "companyName": "Cascara Sdn Bhd",
+    "companyCode": "PRO02",
+    "sector": "Property"
+  },
+  {
+    "companyName": "Energy Line Resources Sdn Bhd",
+    "companyCode": "US04",
+    "sector": "Utility"
+  },
+  {
+    "companyName": "GCEO Office",
+    "companyCode": "GCEO",
+    "sector": "GCEO Office"
+  },
+  {
+    "companyName": "Javel Engineering Sdn Bhd",
+    "companyCode": "CNS02",
+    "sector": "Construction"
+  },
+  {
+    "companyName": "KACC Construction Sdn Bhd",
+    "companyCode": "CNS01",
+    "sector": "Construction"
+  },
+  {
+    "companyName": "Kiara Sky",
+    "companyCode": "PRO03",
+    "sector": "Property"
+  },
+  {
+    "companyName": "Konsortium URW",
+    "companyCode": "US02",
+    "sector": "Utility"
+  },
+  {
+    "companyName": "Medihealth Sdn Bhd",
+    "companyCode": "SS03",
+    "sector": "Services"
+  },
+  {
+    "companyName": "Mediscanlink Sdn Bhd",
+    "companyCode": "PRO04",
+    "sector": "Property"
+  },
+  {
+    "companyName": "OBYU Realty Sdn Bhd",
+    "companyCode": "PRO01",
+    "sector": "Property"
+  },
+  {
+    "companyName": "One Medicare Sdn Bhd",
+    "companyCode": "HSS01",
+    "sector": "Hospital"
+  },
+  {
+    "companyName": "Shorefield Sdn Bhd",
+    "companyCode": "US01",
+    "sector": "Utility"
+  },
+  {
+    "companyName": "Shorfield Communications",
+    "companyCode": "US03",
+    "sector": "Utility"
+  },
+  {
+    "companyName": "Transene Fleet Sdn Bhd",
+    "companyCode": "SS02",
+    "sector": "Services"
+  },
+  {
+    "companyName": "Transene Sdn Bhd",
+    "companyCode": "SS01",
+    "sector": "Services"
+  }
+]
