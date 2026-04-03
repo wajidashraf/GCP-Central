@@ -1,17 +1,13 @@
 'use client';
 
-import { type FormEvent, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { type FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Button from '@/src/components/ui/button';
 
 export default function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = useMemo(
-    () => searchParams.get('callbackUrl') || '/dashboard',
-    [searchParams]
-  );
+  const callbackUrl = '/';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -43,7 +39,7 @@ export default function LoginForm() {
         return;
       }
 
-      router.push(result.url || callbackUrl);
+      router.push(callbackUrl);
       router.refresh();
     } catch {
       setErrorMessage('Unable to sign in right now. Please try again.');
