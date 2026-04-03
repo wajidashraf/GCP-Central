@@ -104,40 +104,6 @@ export async function notifyRequestSubmissionByEmail({
     const requestorEmail = normalizeEmail(request.requestorEmail);
     const requestorName = request.requestorName?.trim() || "Requestor";
 
-    const hocUsersInCompany = await prisma.user.findMany({
-      where: {
-        isActive: true,
-        companyId: request.companyId,
-        roles: {
-          has: HOC_ROLE_SLUG,
-        },
-      },
-      select: {
-        email: true,
-      },
-    });
-
-    const hocUsers =
-      hocUsersInCompany.length > 0
-        ? hocUsersInCompany
-        : await prisma.user.findMany({
-            where: {
-              isActive: true,
-              roles: {
-                has: HOC_ROLE_SLUG,
-              },
-            },
-            select: {
-              email: true,
-            },
-          });
-
-    const hocEmails = dedupeEmails(
-      hocUsers
-        .map((user) => normalizeEmail(user.email))
-        .filter((email) => email && email !== requestorEmail)
-    );
-
     const summaryPayload: RequestEmailPayload = {
       requestNo: request.requestNo,
       requestTitle: request.requestTitle,
@@ -177,32 +143,7 @@ export async function notifyRequestSubmissionByEmail({
       }
     }
 
-    if (hocEmails.length > 0) {
-      const { error } = await resendClient.emails.send({
-        from,
-        to: hocEmails,
-        subject: `New request submitted: ${request.requestNo}`,
-        text: [
-          "A new request has been submitted and requires HOC attention.",
-          "",
-          summaryText,
-          "",
-          `Requestor: ${requestorName} (${requestorEmail || "N/A"})`,
-          "",
-          "This is an automated message from GCP Central.",
-        ].join("\n"),
-        html: `
-          <p>A new request has been submitted and requires HOC attention.</p>
-          ${summaryHtml}
-          <p><strong>Requestor:</strong> ${escapeHtml(requestorName)} (${escapeHtml(requestorEmail || "N/A")})</p>
-          <p>This is an automated message from GCP Central.</p>
-        `,
-      });
-
-      if (error) {
-        console.error("Failed to send request submission email to HOC recipients:", error);
-      }
-    }
+   
   } catch (error) {
     console.error("Request submission email notification failed:", error);
   }

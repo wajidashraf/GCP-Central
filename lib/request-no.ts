@@ -57,10 +57,13 @@ export async function buildNextRequestNo(
     },
   });
 
-  const maxSequence = existingRequestNos.reduce((currentMax, request) => {
+  const maxSequence = existingRequestNos.reduce(
+    (currentMax: number, request: typeof existingRequestNos[number]) => {
     const sequence = extractSequence(request.requestNo, dateSegment, prefix);
     return sequence && sequence > currentMax ? sequence : currentMax;
-  }, 0);
+    },
+    0
+  );
 
   const nextSequence = `${maxSequence + 1}`.padStart(sequenceWidth, "0");
   return `${prefix}-${nextSequence}-${dateSegment}`;

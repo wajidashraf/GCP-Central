@@ -1,0 +1,958 @@
+{% include 'Utilities' %}
+<style>
+    :root {
+        --bg1: #eff6ff;
+        --bg2: #e0e7ff;
+        --white: #fff;
+        --indigo-50: #eef2ff;
+        --indigo-100: #e0e7ff;
+        --indigo-200: #c7d2fe;
+        --indigo-600: #4f46e5;
+        --indigo-700: #4338ca;
+        --blue-50: #eff6ff;
+        --blue-600: #2563eb;
+        --blue-700: #1d4ed8;
+        --green-50: #f0fdf4;
+        --green-100: #dcfce7;
+        --green-600: #16a34a;
+        --green-700: #15803d;
+        --amber-50: #fffbeb;
+        --amber-100: #fef3c7;
+        --amber-600: #d97706;
+        --red-50: #fef2f2;
+        --red-600: #dc2626;
+        --gray-50: #f9fafb;
+        --gray-100: #f3f4f6;
+        --gray-200: #e5e7eb;
+        --gray-300: #d1d5db;
+        --gray-400: #9ca3af;
+        --gray-500: #6b7280;
+        --gray-600: #4b5563;
+        --gray-700: #374151;
+        --gray-800: #1f2937;
+        --gray-900: #111827;
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, .06);
+        --radius: 12px;
+    }
+
+    .slot-manager-container * {
+        box-sizing: border-box
+    }
+
+    .slot-manager-container {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        color: var(--gray-900);
+        background: linear-gradient(135deg, var(--bg1), var(--bg2));
+        min-height: 100vh;
+        padding: 24px;
+        margin: 0;
+    }
+
+    .slot-manager-container .container {
+        max-width: 1200px;
+        margin: 0 auto
+    }
+
+    /* Header */
+    .slot-manager-container .header {
+        background: var(--indigo-600);
+        color: #fff;
+        padding: 2rem;
+        border-radius: var(--radius);
+        margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-sm);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .slot-manager-container .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px
+    }
+
+    .slot-manager-container .title {
+        font-size: 32px;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--indigo-600), var(--blue-600));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: var(--white);
+        background-clip: text
+    }
+
+    .slot-manager-container .subtitle {
+        color: var(--white);
+        margin-top: 4px;
+        font-size: 14px
+    }
+
+    /* Tabs */
+    .slot-manager-container .tabs {
+        display: flex;
+        gap: 8px;
+        background: var(--gray-100);
+        padding: 6px;
+        border-radius: 12px;
+        margin-bottom: 24px
+    }
+
+    .slot-manager-container .tab {
+        flex: 1;
+        padding: 12px 24px;
+        border: 0;
+        background: transparent;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: .2s all ease;
+        color: var(--gray-600)
+    }
+
+    .slot-manager-container .tab.active {
+        background: var(--white);
+        color: var(--indigo-600);
+        box-shadow: 0 2px 8px rgba(79, 70, 229, .15)
+    }
+
+    .slot-manager-container .tab:hover:not(.active) {
+        background: rgba(255, 255, 255, .5)
+    }
+
+    /* Cards */
+    .slot-manager-container .card {
+        background: var(--white);
+        border-radius: 20px;
+        box-shadow: 0 20px 35px rgba(31, 41, 55, .08);
+        padding: 32px;
+    }
+
+    /* Form */
+    .form-grid {
+        display: grid;
+        gap: 20px
+    }
+
+    @media (min-width:768px) {
+        .form-grid {
+            grid-template-columns: repeat(2, 1fr)
+        }
+    }
+
+    .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px
+    }
+
+    .form-field.full {
+        grid-column: 1/-1
+    }
+
+    label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--gray-700)
+    }
+
+    input,
+    select {
+        width: 100%;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 2px solid var(--gray-200);
+        background: var(--white);
+        font-size: 14px;
+        transition: .2s all ease;
+        outline: none
+    }
+
+    input:focus,
+    select:focus {
+        border-color: var(--indigo-600);
+        box-shadow: 0 0 0 4px rgba(79, 70, 229, .1)
+    }
+
+    input:disabled {
+        background: var(--gray-50);
+        color: var(--gray-500)
+    }
+
+    /* Duration Chips */
+    .duration-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap
+    }
+
+    .chip {
+        padding: 10px 18px;
+        border-radius: 10px;
+        border: 2px solid var(--gray-200);
+        background: var(--white);
+        cursor: pointer;
+        font-weight: 600;
+        transition: .2s all ease;
+        font-size: 14px
+    }
+
+    .slot-manager-container .chip:hover {
+        border-color: var(--indigo-600);
+        transform: translateY(-2px)
+    }
+
+    .slot-manager-container .chip.selected {
+        background: var(--indigo-600);
+        color: var(--white);
+        border-color: var(--indigo-600)
+    }
+
+    /* Buttons */
+    .slot-manager-container .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 24px;
+        border-radius: 12px;
+        border: 0;
+        font-weight: 600;
+        cursor: pointer;
+        transition: .2s all ease;
+        font-size: 15px
+    }
+
+    .slot-manager-container .btn:active {
+        transform: translateY(1px)
+    }
+
+    .slot-manager-container .btn-primary {
+        background: var(--indigo-600);
+        color: var(--white)
+    }
+
+    .slot-manager-container .btn-primary:hover {
+        background: var(--indigo-700);
+        box-shadow: 0 8px 20px rgba(79, 70, 229, .3)
+    }
+
+    .slot-manager-container .btn-primary:disabled {
+        background: var(--gray-300);
+        cursor: not-allowed;
+        transform: none
+    }
+
+    .slot-manager-container .btn-ghost {
+        background: rgba(255, 255, 255, .25);
+        padding: .5rem 1rem;
+        border-radius: 8px;
+        font-size: .9375rem;
+        font-weight: 600;
+        color: var(--white);
+    }
+
+    .slot-manager-container .btn-ghost:hover {
+        background: rgba(255, 255, 255, .50);
+    }
+
+    /* Loading */
+    .slot-manager-container .loading {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 60px;
+        color: var(--gray-500)
+    }
+
+    .slot-manager-container .loading.show {
+        display: flex
+    }
+
+    .slot-manager-container .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid var(--gray-200);
+        border-top-color: var(--indigo-600);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg)
+        }
+    }
+
+    /* Slots Grid */
+    .slot-manager-container .slots-grid {
+        display: grid;
+        gap: 16px;
+        margin-top: 20px
+    }
+
+    @media (min-width:640px) {
+        .slot-manager-container .slots-grid {
+            grid-template-columns: repeat(2, 1fr)
+        }
+    }
+
+    @media (min-width:1024px) {
+        .slot-manager-container .slots-grid {
+            grid-template-columns: repeat(3, 1fr)
+        }
+    }
+
+    .slot-manager-container .slot-card {
+        border-radius: 16px;
+        padding: 20px;
+        border: 2px solid;
+        position: relative;
+        transition: .2s all ease
+    }
+
+    .slot-manager-container .slot-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, .1)
+    }
+
+    .slot-manager-container .slot-card.available {
+        background: var(--green-50);
+        border-color: var(--green-600);
+    }
+
+    .slot-manager-container .slot-card.booked {
+        background: var(--gray-50);
+        border-color: var(--gray-300);
+        opacity: .7
+    }
+
+    .slot-manager-container .slot-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px
+    }
+
+    .slot-manager-container .slot-date {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--gray-700)
+    }
+
+    .slot-manager-container .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700
+    }
+
+    .slot-manager-container .badge-available {
+        background: var(--green-600);
+        color: var(--white)
+    }
+
+    .slot-manager-container .badge-booked {
+        background: var(--gray-400);
+        color: var(--white)
+    }
+
+    .slot-manager-container .slot-time {
+        font-size: 20px;
+        font-weight: 800;
+        margin-bottom: 8px;
+        color: var(--gray-900)
+    }
+
+    .slot-manager-container .slot-duration {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--gray-600);
+        font-size: 14px;
+        margin-bottom: 8px
+    }
+
+    .slot-manager-container .slot-attendee {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        background: var(--white);
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 12px
+    }
+
+    .slot-manager-container .avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--indigo-600);
+        color: var(--white);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700
+    }
+
+    /* Empty State */
+    .slot-manager-container .empty-state {
+        text-align: center;
+        padding: 80px 24px;
+        color: var(--gray-500)
+    }
+
+    .slot-manager-container .empty-icon {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 20px;
+        opacity: .3
+    }
+
+    /* Success Message */
+    .slot-manager-container .success-msg {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        background: var(--green-600);
+        color: var(--white);
+        padding: 16px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 12px 24px rgba(22, 163, 74, .3);
+        display: none;
+        align-items: center;
+        gap: 12px;
+        z-index: 100;
+        animation: slideIn 0.3s ease
+    }
+
+    .slot-manager-container .success-msg.show {
+        display: flex
+    }
+
+    @keyframes slideIn {
+        from {
+            transform: translateX(400px);
+            opacity: 0
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1
+        }
+    }
+
+    /* Stats */
+    .slot-manager-container .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px
+    }
+
+    .slot-manager-container .stat-card {
+        background: var(--white);
+        border-radius: 16px;
+        padding: 20px;
+        border: 2px solid var(--gray-200)
+    }
+
+    .slot-manager-container .stat-label {
+        font-size: 13px;
+        color: var(--gray-600);
+        font-weight: 600;
+        margin-bottom: 8px
+    }
+
+    .slot-manager-container .stat-value {
+        font-size: 32px;
+        font-weight: 800
+    }
+
+    .slot-manager-container .stat-card.available .stat-value {
+        color: var(--green-600)
+    }
+
+    .slot-manager-container .stat-card.booked .stat-value {
+        color: var(--gray-600)
+    }
+
+    .slot-manager-container .stat-card.total .stat-value {
+        color: var(--indigo-600)
+    }
+
+    /* Icon */
+    .slot-manager-container .icon {
+        width: 20px;
+        height: 20px;
+        display: inline-block;
+        vertical-align: middle
+    }
+</style>
+
+<div class="slot-manager-container">
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div>
+                    <h1 class="title">Slot Management</h1>
+                    <p class="subtitle">Create and manage time slots for meetings</p>
+                </div>
+                <button id="refreshBtn" class="btn btn-ghost">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="create">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                </svg>
+                Create Slot
+            </button>
+            <button class="tab" data-tab="view">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                    <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+                View Slots
+            </button>
+        </div>
+
+        <!-- Create Slot Tab -->
+        <div id="createTab" class="tab-content">
+            <div class="card">
+                <h2 style="font-size:20px;font-weight:700;margin-bottom:24px;color:var(--gray-800)">Create New Time Slot
+                </h2>
+
+                <form id="slotForm" class="form-grid">
+                    <div class="form-field">
+                        <label>Attendee *</label>
+                        <select id="attendeeSelect" required>
+                            <option value="">Select attendee...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Date *</label>
+                        <input type="date" id="slotDate" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Start Time *</label>
+                        <input type="time" id="startTime" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label>End Time (Auto-calculated)</label>
+                        <input type="time" id="endTime" disabled>
+                    </div>
+
+                    <div class="form-field full">
+                        <label>Duration *</label>
+                        <div class="duration-chips" id="durationChips">
+                            <div class="chip" data-duration="15">15 min</div>
+                            <div class="chip" data-duration="30">30 min</div>
+                            <div class="chip selected" data-duration="60">60 min</div>
+                            <div class="chip" data-duration="90">90 min</div>
+                            <div class="chip" data-duration="120">120 min</div>
+                        </div>
+                    </div>
+
+                    <div class="form-field full" style="margin-top:12px">
+                        <button type="submit" class="btn btn-primary" style="width:100%">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                            Create Slot
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- View Slots Tab -->
+        <div id="viewTab" class="tab-content" style="display:none">
+            <!-- Stats -->
+            <div class="stats">
+                <div class="stat-card total">
+                    <div class="stat-label">TOTAL SLOTS</div>
+                    <div class="stat-value" id="totalSlots">0</div>
+                </div>
+                <div class="stat-card available">
+                    <div class="stat-label">AVAILABLE</div>
+                    <div class="stat-value" id="availableSlots">0</div>
+                </div>
+                <div class="stat-card booked">
+                    <div class="stat-label">BOOKED</div>
+                    <div class="stat-value" id="bookedSlots">0</div>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="loadingState" class="loading">
+                <div class="spinner"></div>
+            </div>
+
+            <!-- Slots Grid -->
+            <div class="card">
+                <h2 style="font-size:20px;font-weight:700;margin-bottom:4px;color:var(--gray-800)">All Time Slots</h2>
+                <p style="color:var(--gray-600);font-size:14px;margin-bottom:20px">View all available and booked slots
+                </p>
+                <div id="slotsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Message -->
+    <div id="successMsg" class="success-msg">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <path d="m9 11 3 3L22 4" />
+        </svg>
+        <span id="successText">Slot created successfully!</span>
+    </div>
+
+    <script>
+        // State
+        let selectedDuration = 60;
+        let allSlots = [];
+        let attendees = [];
+
+        // DOM Elements
+        const tabs = document.querySelectorAll('.tab');
+        const createTab = document.getElementById('createTab');
+        const viewTab = document.getElementById('viewTab');
+        const slotForm = document.getElementById('slotForm');
+        const attendeeSelect = document.getElementById('attendeeSelect');
+        const slotDate = document.getElementById('slotDate');
+        const startTime = document.getElementById('startTime');
+        const endTime = document.getElementById('endTime');
+        const durationChips = document.querySelectorAll('.chip');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const slotsContainer = document.getElementById('slotsContainer');
+        const loadingState = document.getElementById('loadingState');
+        const successMsg = document.getElementById('successMsg');
+        const successText = document.getElementById('successText');
+
+        // Tab Switching
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                const tabName = tab.dataset.tab;
+                if (tabName === 'create') {
+                    createTab.style.display = 'block';
+                    viewTab.style.display = 'none';
+                } else {
+                    createTab.style.display = 'none';
+                    viewTab.style.display = 'block';
+                    loadSlots();
+                }
+            });
+        });
+
+        // Duration Selection
+        durationChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                durationChips.forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                selectedDuration = parseInt(chip.dataset.duration);
+                calculateEndTime();
+            });
+        });
+
+        // Calculate End Time
+        function calculateEndTime() {
+            const start = startTime.value;
+            if (!start) {
+                endTime.value = '';
+                return;
+            }
+
+            const [hours, minutes] = start.split(':').map(Number);
+            const totalMinutes = hours * 60 + minutes + selectedDuration;
+            const endHours = Math.floor(totalMinutes / 60) % 24;
+            const endMinutes = totalMinutes % 60;
+
+            endTime.value = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+        }
+
+        startTime.addEventListener('change', calculateEndTime);
+
+        // Show Success Message
+        function showSuccess(message) {
+            successText.textContent = message;
+            successMsg.classList.add('show');
+            setTimeout(() => {
+                successMsg.classList.remove('show');
+            }, 3000);
+        }
+
+        // Load Attendees from Dataverse
+        async function loadAttendees() {
+            attendeeSelect.innerHTML = '<option value="">Loading attendees...</option>';
+            attendeeSelect.disabled = true;
+
+            const results = await getContactList()
+            attendees = results.length > 0 ? [] : [{
+                name: "Pandan Cheez",
+                id: "b70e126a-bd95-f011-b41c-002248ebc9e4",
+                email: "pandancheez@gmail.com"
+            }];
+
+            attendeeSelect.innerHTML = '<option value="">Select attendee...</option>';
+
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i];
+                const contactid = result.value;
+                const fullname = result.label || 'Unknown';
+                const emailaddress1 = result.email || '';
+
+                attendees.push({
+                    id: contactid,
+                    name: fullname,
+                    email: emailaddress1
+                });
+
+                const option = document.createElement('option');
+                option.value = contactid;
+                option.setAttribute('data-email', emailaddress1)
+                option.textContent = `${fullname} (${emailaddress1})`;
+                attendeeSelect.appendChild(option);
+            }
+
+            attendeeSelect.disabled = false;
+            console.log(`Loaded ${attendees.length} attendees`);
+        }
+
+        // Create Slot
+        slotForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const attendeeId = attendeeSelect.value;
+            const selectedOption = attendeeSelect.options[attendeeSelect.selectedIndex];
+            const attendeeEmail = selectedOption.getAttribute('data-email') || '';
+            const date = slotDate.value;
+            const start = startTime.value;
+            const end = endTime.value;
+
+            if (!attendeeId || !date || !start || !end) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            // Combine date and time into ISO format
+            const startDateTime = new Date(`${date}T${start}:00`).toISOString();
+            const endDateTime = new Date(`${date}T${end}:00`).toISOString();
+            const dateOnly = new Date(date).toISOString();
+
+            const record = {
+                "gcp_Attendee@odata.bind": `/contacts(${attendeeId})`, // Adjust entity type as needed
+                'gcp_attendeeemail': attendeeEmail,
+                "gcp_start": startDateTime,
+                "gcp_end": endDateTime,
+                "gcp_date": dateOnly
+            };
+
+            try {
+                // Disable form
+                const submitBtn = slotForm.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Creating...';
+
+                // Make API call
+                await new Promise((resolve, reject) => {
+                    webapi.safeAjax({
+                        type: "POST",
+                        contentType: "application/json",
+                        url: "/_api/gcp_slots",
+                        data: JSON.stringify(record),
+                        success: function (data, textStatus, xhr) {
+                            const newId = xhr.getResponseHeader("entityid");
+                            console.log('Created slot:', newId);
+                            resolve(newId);
+                        },
+                        error: function (xhr, textStatus, errorThrown) {
+                            console.error('Error creating slot:', xhr);
+                            reject(xhr);
+                        }
+                    });
+                });
+
+                // Success
+                showSuccess('Slot created successfully!');
+                slotForm.reset();
+                selectedDuration = 60;
+                durationChips.forEach(c => c.classList.remove('selected'));
+                durationChips[2].classList.add('selected'); // Select 60 min by default
+
+                // Re-enable form
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Create Slot';
+
+            } catch (error) {
+                alert('Failed to create slot. Please try again.');
+                const submitBtn = slotForm.querySelector('button[type="submit"]');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Create Slot';
+            }
+        });
+
+        // Load Slots
+        async function loadSlots() {
+            loadingState.classList.add('show');
+            slotsContainer.innerHTML = '';
+
+            try {
+                await new Promise((resolve, reject) => {
+                    webapi.safeAjax({
+                        type: "GET",
+                        url: "/_api/gcp_slots?$select=gcp_slotstatus,gcp_slotid,_gcp_attendee_value,gcp_date,gcp_end,gcp_start&$orderby=gcp_date desc,gcp_start asc",
+                        contentType: "application/json",
+                        headers: {
+                            "Prefer": "odata.include-annotations=*"
+                        },
+                        success: function (data) {
+                            allSlots = data.value.map(result => ({
+                                id: result.gcp_slotid,
+                                attendeeId: result._gcp_attendee_value,
+                                attendeeName: result["_gcp_attendee_value@OData.Community.Display.V1.FormattedValue"] || 'Unknown',
+                                date: result.gcp_date,
+                                start: result.gcp_start,
+                                end: result.gcp_end,
+                                isBooked: result.gcp_slotstatus === 1
+                            }));
+
+                            renderSlots();
+                            updateStats();
+                            resolve();
+                        },
+                        error: function (xhr) {
+                            console.error('Error loading slots:', xhr);
+                            reject(xhr);
+                        }
+                    });
+                });
+            } catch (error) {
+                slotsContainer.innerHTML = '<div class="empty-state"><p>Failed to load slots. Please try again.</p></div>';
+            } finally {
+                loadingState.classList.remove('show');
+            }
+        }
+
+        // Render Slots
+        function renderSlots() {
+            if (allSlots.length === 0) {
+                slotsContainer.innerHTML = `
+          <div class="empty-state">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/>
+              <path d="M16 2v4M8 2v4M3 10h18"/>
+            </svg>
+            <p style="font-size:18px;font-weight:600;margin-bottom:8px">No slots created yet</p>
+            <p>Create your first time slot to get started</p>
+          </div>
+        `;
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'slots-grid';
+
+            allSlots.forEach(slot => {
+                const card = document.createElement('div');
+                card.className = `slot-card ${slot.isBooked ? 'booked' : 'available'}`;
+
+                const dateObj = new Date(slot.date);
+                const startObj = new Date(slot.start);
+                const endObj = new Date(slot.end);
+
+                const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                const formattedStart = startObj.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                const formattedEnd = endObj.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                const duration = Math.round((endObj - startObj) / 60000);
+
+                const initials = slot.attendeeName.split(' ').map(n => n[0]).join('').toUpperCase();
+
+                card.innerHTML = `
+          <div class="slot-header">
+            <div class="slot-date">${formattedDate}</div>
+            <span class="badge ${slot.isBooked ? 'badge-booked' : 'badge-available'}">
+              ${slot.isBooked ? '● Booked' : '● Available'}
+            </span>
+          </div>
+          <div class="slot-time">${formattedStart} - ${formattedEnd}</div>
+          <div class="slot-duration">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            ${duration} minutes
+          </div>
+          ${slot.isBooked ? `
+            <div class="slot-attendee">
+              <div class="avatar">${initials}</div>
+              <span>${slot.attendeeName}</span>
+            </div>
+          ` : ''}
+        `;
+
+                grid.appendChild(card);
+            });
+
+            slotsContainer.appendChild(grid);
+        }
+
+        // Update Stats
+        function updateStats() {
+            const total = allSlots.length;
+            const booked = allSlots.filter(s => s.isBooked).length;
+            const available = total - booked;
+
+            document.getElementById('totalSlots').textContent = total;
+            document.getElementById('availableSlots').textContent = available;
+            document.getElementById('bookedSlots').textContent = booked;
+        }
+
+        // Refresh Button
+        refreshBtn.addEventListener('click', () => {
+            if (viewTab.style.display !== 'none') {
+                loadSlots();
+            }
+        });
+
+        // Initialize
+        loadAttendees();
+
+        // Set default date to today
+        const today = new Date().toISOString().split('T')[0];
+        slotDate.value = today;
+    </script>

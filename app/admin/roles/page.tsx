@@ -102,8 +102,13 @@ export default async function AdminRolesPage() {
     }),
   ]);
 
-  const roleNameMap = new Map(dbRoles.map((role) => [role.slug, role.name]));
-  const roleOptions = USER_ROLES.map((slug) => ({
+  const roleNameMap: Map<UserRole, string> = new Map(
+    (dbRoles as Array<{ slug: string; name: string }>).map((role) => [
+      normalizeRole(role.slug),
+      role.name,
+    ])
+  );
+  const roleOptions: Array<{ slug: UserRole; label: string }> = USER_ROLES.map((slug: UserRole) => ({
     slug,
     label: roleNameMap.get(slug) ?? USER_ROLE_LABELS[slug],
   }));
@@ -122,10 +127,10 @@ export default async function AdminRolesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="badge badge--brand">Users: {users.length}</span>
           <span className="badge badge--success">
-            Active: {users.filter((user) => user.isActive).length}
+            Active: {users.filter((user: typeof users[number]) => user.isActive).length}
           </span>
           <span className="badge badge--neutral">
-            Inactive: {users.filter((user) => !user.isActive).length}
+            Inactive: {users.filter((user: typeof users[number]) => !user.isActive).length}
           </span>
         </div>
       </div>
@@ -143,7 +148,7 @@ export default async function AdminRolesPage() {
           </thead>
           <tbody>
             {users.length > 0 ? (
-              users.map((user) => {
+              users.map((user: typeof users[number]) => {
                 const primaryRole = normalizeRole(user.primaryRole);
                 const assignedRoles = normalizeRoles(primaryRole, user.roles);
 
@@ -171,7 +176,7 @@ export default async function AdminRolesPage() {
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-1.5">
-                        {assignedRoles.map((role) => (
+                        {assignedRoles.map((role: UserRole) => (
                           <span key={role} className={ROLE_BADGE_CLASSNAME[role]}>
                             {USER_ROLE_LABELS[role]}
                           </span>
@@ -190,7 +195,7 @@ export default async function AdminRolesPage() {
                               defaultValue={primaryRole}
                               className="input mt-1 h-9 py-0 text-sm"
                             >
-                              {roleOptions.map((roleOption) => (
+                              {roleOptions.map((roleOption: typeof roleOptions[number]) => (
                                 <option key={roleOption.slug} value={roleOption.slug}>
                                   {roleOption.label}
                                 </option>
@@ -199,7 +204,7 @@ export default async function AdminRolesPage() {
                           </label>
 
                           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                            {roleOptions.map((roleOption) => (
+                            {roleOptions.map((roleOption: typeof roleOptions[number]) => (
                               <label
                                 key={roleOption.slug}
                                 className="flex items-center gap-2 text-xs text-[var(--text-muted)]"

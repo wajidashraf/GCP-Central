@@ -126,7 +126,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               companyCode: fallbackCompany.companyCode,
               companyName: fallbackCompany.companyName,
             }}
-            projects={projects.map((project) => ({
+            projects={projects.map((project: typeof projects[number]) => ({
               ...project,
               projectCode: project.projectCode ?? '',
             }))}
@@ -172,7 +172,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
             companyCode: fallbackCompany.companyCode,
             companyName: fallbackCompany.companyName,
           }}
-          projects={projects.map((project) => ({
+          projects={projects.map((project: typeof projects[number]) => ({
             ...project,
             projectCode: project.projectCode ?? '',
           }))}

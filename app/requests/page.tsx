@@ -130,7 +130,7 @@ export default async function RequestsPage() {
                   <td>Pending</td>
                   <td>
                     <Button
-                      href={`/submit/${request.routingType.toLowerCase()}/${encodeURIComponent(request.requestType)}`}
+                      href={`/requests/${request.id}`}
                       variant="secondary"
                       size="sm"
                     >

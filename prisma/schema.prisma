@@ -68,11 +68,14 @@ model Request {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  company  Company     @relation(fields: [companyId], references: [id])
-  rtp      RtpRequest?
-  pbl      PblRequest?
-  jvp      JvpRequest?
-  projects Project[]
+  company              Company              @relation(fields: [companyId], references: [id])
+  rtp                  RtpRequest?
+  pbl                  PblRequest?
+  jvp                  JvpRequest?
+  projects             Project[]
+  verifierComment      VerifierComment?
+  reviewerSuggestions  ReviewerSuggestion[]
+  engagements          Engagement[]
 
   @@index([requestType, routingType])
   @@index([requestorEmail])
@@ -211,4 +214,67 @@ model PblBidder {
 
   @@index([pblRequestId])
   @@index([companyName])
+}
+
+model VerifierComment {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId     String   @unique @db.ObjectId
+  verifierId    String   @db.ObjectId
+  comment       String
+  decisionCode  String
+  verifiedBy    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([verifierId])
+}
+
+model ReviewerSuggestion {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId String   @db.ObjectId
+  reviewerId String  @db.ObjectId
+  suggestion String
+  status    String   @default("pending")
+  action    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([reviewerId])
+}
+
+model EngagementSlot {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  slotName  String
+  startTime DateTime
+  endTime   DateTime
+  attendees String[]
+  createdBy String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  engagements Engagement[]
+
+  @@index([createdBy])
+}
+
+model Engagement {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId String   @unique @db.ObjectId
+  slotId    String   @db.ObjectId
+  requestorId String @db.ObjectId
+  status    String   @default("booked")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request Request         @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  slot    EngagementSlot @relation(fields: [slotId], references: [id])
+
+  @@index([slotId])
+  @@index([requestorId])
 }

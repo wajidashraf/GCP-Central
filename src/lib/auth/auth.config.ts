@@ -78,7 +78,7 @@ export const authConfig = {
           email: user.email,
           username: user.username,
           role: normalizeRole(user.primaryRole),
-          roles: user.roles.map((role) => normalizeRole(role)),
+          roles: user.roles.map((role: string) => normalizeRole(role)),
           companyId: user.companyId,
           companyCode: user.company?.companyCode ?? null,
           companyName: user.company?.companyName ?? null,
@@ -94,8 +94,8 @@ export const authConfig = {
       if (user) {
         token.username = user.username;
         token.role = normalizeRole(user.role);
-        token.roles = (Array.isArray(user.roles) ? user.roles : []).map((role) =>
-          normalizeRole(role)
+        token.roles = (Array.isArray(user.roles) ? user.roles : []).map((role: unknown) =>
+          normalizeRole(typeof role === "string" ? role : undefined)
         );
         token.companyId = user.companyId ?? null;
         token.companyCode = user.companyCode ?? null;
@@ -112,7 +112,9 @@ export const authConfig = {
           typeof token.role === "string" ? token.role : undefined
         );
         session.user.roles = Array.isArray(token.roles)
-          ? token.roles.map((role) => normalizeRole(role))
+          ? token.roles.map((role: unknown) =>
+              normalizeRole(typeof role === "string" ? role : undefined)
+            )
           : [session.user.role];
         session.user.companyId =
           typeof token.companyId === "string" ? token.companyId : undefined;

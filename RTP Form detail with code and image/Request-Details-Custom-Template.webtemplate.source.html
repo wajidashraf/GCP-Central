@@ -1,0 +1,1227 @@
+{% include 'Custom Signature Section Web Template' %}
+{% include 'Utilities' %}
+{% include 'Print Function' %}
+{% include 'RenderRTPForm' %}
+{% include 'RenderBPLForm' %}
+{% include 'RenderJVPForm' %}
+{% include 'RenderSTSPForm' %}
+{% include 'RenderCaaFrom' %}
+{% include 'RenderCPRFrom' %}
+{% include 'Render PCCA Form' %}
+<!-- {% include 'Render RPCCA Form' %} -->
+{% include 'Render PP-VAP form' %}
+{% include 'Render CI form' %}
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+
+<style>
+    body {
+        background: #E6E6E6;
+    }
+
+    #view_form {
+        /* min-height: 100vh; */
+        margin-bottom: 1rem;
+    }
+
+    #pageLoader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, .9);
+        color: #fff;
+        z-index: 1060;
+        font-weight: 600;
+        letter-spacing: .02em;
+    }
+
+    .form-control:disabled {
+        background-color: var(--bs-secondary-bg) !important;
+        opacity: 1;
+    }
+
+    #subgrid-rtp .tab-title,
+    #subgrid-rtp .tab,
+    #subgrid-rtp fieldset,
+    #subgrid-pbl .tab-title,
+    #subgrid-pbl .tab,
+    #subgrid-pbl fieldset {
+        margin: 0 !important;
+    }
+
+    .fld p,
+    .fld div {
+        margin-bottom: 0;
+    }
+
+    .fs-small {
+        font-size: 16px !important;
+    }
+
+    .fx-choice {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .375rem .5rem;
+        border-radius: .375rem;
+        cursor: pointer;
+    }
+
+    .fx-choice input[type="radio"] {
+        /* hide native radio but keep it accessible */
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .fx-choice .fx-box {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--bs-primary);
+        border-radius: .25rem;
+        /* square corners (checkbox look) */
+        display: inline-block;
+        position: relative;
+        flex: 0 0 18px;
+    }
+
+    /* tick (✓) when checked */
+    .fx-choice input[type="radio"]:checked+.fx-box {
+        background-color: var(--bs-primary);
+        border-color: var(--bs-primary);
+    }
+
+    .fx-choice input[type="radio"]:checked+.fx-box::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 6px;
+        height: 10px;
+        border: 2px solid #fff;
+        border-top: 0;
+        border-left: 0;
+        transform: rotate(45deg);
+    }
+
+    /* focus ring for a11y */
+    .fx-choice input[type="radio"]:focus-visible+.fx-box {
+        outline: 3px solid rgba(13, 110, 253, .35);
+        outline-offset: 2px;
+    }
+
+    #acceptBtn {
+        margin-top: 0rem;
+    }
+
+    #subgrid-caa div.tab,
+    #subgrid-caa fieldset[aria-label="Documents"],
+    #subgrid-stsp div.tab,
+    #subgrid-stsp fieldset[aria-label="Documents"],
+    #subgrid-jvp div.tab,
+    #subgrid-jvp fieldset[aria-label="Documents"],
+    #subgrid-pbl div.tab,
+    #subgrid-pbl fieldset[aria-label="Documents"],
+    #subgrid-rtp div.tab,
+    #subgrid-rtp fieldset[aria-label="Documents"] {
+        margin-bottom: 0 !important;
+    }
+
+    #subgrid-caa tsp fieldset[aria-label="Documents"] td.sharepoint-documents,
+    #subgrid-stsp fieldset[aria-label="Documents"] td.sharepoint-documents,
+    #subgrid-jvp fieldset[aria-label="Documents"] td.sharepoint-documents,
+    #subgrid-rtp fieldset[aria-label="Documents"] td.sharepoint-documents,
+    #subgrid-pbl fieldset[aria-label="Documents"] td.sharepoint-documents {
+        padding-bottom: 0 !important;
+    }
+
+    .bg-secondary {
+        height: 40px;
+    }
+
+    #giveSuggestionBtn:hover {
+        background-color: #fff;
+    }
+</style>
+
+<script>
+    const isAuth = "{{ user.roles }}".includes("Authenticated Users");
+    const isRequestor = "{{ user.roles }}".includes("Requestor");
+    const isVerifier = "{{ user.roles }}".includes("Verifier");
+    const isReviewer = "{{ user.roles }}".includes("Reviewer");
+    const isAdmin = "{{ user.roles }}".includes("Admin");
+
+    window.requestDetailRoles = { isAuth, isRequestor, isVerifier, isReviewer, isAdmin };
+
+    console.log("User roles:", "{{ user.roles }}");
+    console.log("isAuth:", isAuth);
+    console.log("isRequestor:", isRequestor);
+    console.log("isVerifier:", isVerifier);
+    console.log("isReviewer:", isReviewer);
+    console.log("isAdmin:", isAdmin);
+
+
+    const REQUEST_TYPES = {
+        RTP: "1",
+        PBL: "2",
+        JVP: "3",
+        STSP: "4",
+        CAA: "5",
+        PCCA: "6",
+        PP: "7",
+        VAP: "8",
+        Other: "9",
+        CI: "11",
+        CPR: "12",
+        GCPOther: "13",
+        RPCCA: "10",
+        RPP: "14",
+    };
+
+    const STATUS = {
+        FR: 0,
+        New: 1,
+        ReadyForEngagement: 2,
+        R: 3,
+        DraftReview: 4,
+        PendingReview: 5,
+        CompleteReview: 6,
+        PendingAcceptance: 7,
+        CompleteAcceptance: 8,
+        PendingAck: 9,
+        ACK: 10,
+        PendingEndorse: 11,
+        E: 12,
+        Submitted: 13,
+        UnderVerification: 14,
+        Scheduled: 15,
+        RS: 16,
+        NC3: 17,
+        NC4: 18,
+        W: 19
+    };
+    [4, 5, 6, 7, 8, 9, 10, 11, 12, 17, 18, 19]
+
+    const REVIEW_CODES = [
+        { value: '1', label: 'Code 1: Proceed with acceptance of review.' },
+        { value: '2', label: 'Code 2: Resubmit for review, critical information missing.' },
+        { value: '3', label: 'Code 3: No submission for review. Non-compliance.' },
+        { value: '4', label: 'Code 4: Exempted for review and approve by Main GCPC (signed letter as attached).' }
+    ];
+
+    const DECISION_CODE_MAP = {
+        '1': 'Proceed with acceptance of review',
+        '2': 'Resubmit for review - critical information missing',
+        '3': 'No submission for review - Non-compliance',
+        '4': 'Exempted for review and approve by Main GCPC'
+    };
+
+    const SIGNATURE_REQUIREMENTS = {
+        prepared: 1,
+        confirmed: 1
+    };
+
+    const SUBGRID_IDS = {
+        [REQUEST_TYPES.RTP]: "subgrid-rtp",
+        [REQUEST_TYPES.PBL]: "subgrid-pbl",
+        [REQUEST_TYPES.JVP]: "subgrid-jvp",
+        [REQUEST_TYPES.STSP]: "subgrid-stsp",
+        [REQUEST_TYPES.CAA]: "subgrid-caa",
+        [REQUEST_TYPES.PCCA]: "subgrid-pcca",
+        [REQUEST_TYPES.PP]: "subgrid-pp",
+        [REQUEST_TYPES.VAP]: "subgrid-vap",
+        [REQUEST_TYPES.Other]: "subgrid-other",
+        [REQUEST_TYPES.CI]: "subgrid-ci",
+        [REQUEST_TYPES.CPR]: "subgrid-cpr",
+        [REQUEST_TYPES.RPCCA]: "subgrid-rpcca",
+        [REQUEST_TYPES.RPP]: "subgrid-rpp",
+    };
+
+    // ============================================================================
+    // STATE
+    // ============================================================================
+
+    let loader = null;
+    const params = getRecordId();
+    const id = params.id;
+    const type = params.type;
+    const documentId = params.documentId
+
+    // ============================================================================
+    // UI HELPERS
+    // ============================================================================
+
+    function fld(label, value) {
+        if (!['1', '2', '3', '4', '5'].includes(type)) {
+            if (label === 'Project Name') label = 'Contract Name';
+            else if (label === 'Project Code') label = 'Contract Code';
+        }
+        return `
+      <div class="mb-2 fld">
+        <strong class="fw-medium d-block">${esc(label)}</strong>
+        <p class="border rounded p-2 mb-0 fs-small">${esc(value ?? "—")}</p>
+      </div>`;
+    }
+
+    function fldMultiline(label, value, id = '') {
+        return `
+      <div class="mb-2 fld" id=${id}>
+        <strong class="fw-medium d-block">${esc(label)}</strong>
+        <div class="border rounded p-2 fs-small" style="white-space:pre-wrap;">${esc(value ?? "—")}</div>
+      </div>`;
+    }
+
+    function showLoader(message = "Loading...") {
+        if (loader) loader.style.display = 'flex';
+    }
+
+    function hideLoader() {
+        if (loader) loader.style.display = 'none';
+    }
+
+    function showError(message) {
+        const el = document.getElementById("view_form");
+        el?.insertAdjacentHTML("afterbegin", `<div class="alert alert-danger">${esc(message)}</div>`);
+    }
+
+    function goBack() {
+        window.location.href = '/requests-list/';
+    }
+
+    // ============================================================================
+    // DATA FETCHING
+    // ============================================================================
+
+    async function fetchBiddersData(pblRequestId) {
+        if (!pblRequestId) return null;
+
+        const url = `/_api/gcp_pblbidderses?$select=gcp_pblbiddersid,gcp_acknowledgment,gcp_company,gcp_justificationforlt3bidders,gcp_location,gcp_pblbiddername,_gcp_pblrequest_value,gcp_person_in_charge,gcp_piccontactnumber,_gcp_recommendationby_value,gcp_sourcesfrom&$filter=_gcp_pblrequest_value eq ${pblRequestId}`;
+
+        const response = await getData(url);
+        return response?.value || null;
+    }
+
+    async function fetchRequestData() {
+        const url = getODataUrl(id, type);
+        const data = await getData(url);
+
+        if (!data) {
+            console.warn("No response from Web API");
+            return null;
+        }
+
+        return data;
+    }
+
+    // ============================================================================
+    // SIGNATURE SECTION
+    // ============================================================================
+
+    function hasRequiredSignatures() {
+        const signatureWrapper = document.getElementById("signature-section");
+        if (!signatureWrapper) return false;
+
+        const preparedSection = signatureWrapper.querySelector('.signature-row.prepared');
+        const confirmedSection = signatureWrapper.querySelector('.signature-row.confirmed');
+
+        const preparedCount = preparedSection?.querySelectorAll('.signature-box img[src]').length || 0;
+        const confirmedCount = confirmedSection?.querySelectorAll('.signature-box img[src]').length || 0;
+
+        return preparedCount >= SIGNATURE_REQUIREMENTS.prepared &&
+            confirmedCount >= SIGNATURE_REQUIREMENTS.confirmed;
+    }
+
+    function addPendingReviewButton(workinggcpcObj) {
+
+        let workingGCPclickCount = workinggcpcObj.workingGCPclickCount || 0;
+        let clickCount = "( " + workingGCPclickCount + " / 3 )";
+
+        let CurrentLoggedInUser = getCurrentUser();
+        let userValue = CurrentLoggedInUser.id + "-" + CurrentLoggedInUser.name;
+
+        let userAlreadyClicked =
+            workinggcpcObj.workinggcpclickbyuser1 === userValue ||
+            workinggcpcObj.workinggcpclickbyuser2 === userValue ||
+            workinggcpcObj.workinggcpclickbyuser3 === userValue;
+
+        const tooltipText = "At least 3 Working GCPC Clicks to Change Status to Pending Review";
+
+        const html = `<div class="text-end pb-3"><button type="button" class="btn  ${userAlreadyClicked ? "disabled btn-secondary" : "btn-primary"}" id="PendingReviewButton" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipText}" data-id="${esc(id)}">Change Request Status to Pending Review <em id='workingGCPclickCount' class='ms-1 fw-bold small'>${clickCount}</em></button></div>`;
+
+        document.getElementById("view_form")?.insertAdjacentHTML("afterend", html);
+
+        const btn = document.getElementById("PendingReviewButton");
+        if (btn) new bootstrap.Tooltip(btn);
+
+        document.getElementById("PendingReviewButton")?.addEventListener("click", async function () {
+            if (userAlreadyClicked) return;
+
+            let totalCount = workingGCPclickCount;
+            let requestId = getRecordId().id;
+
+            let updateBody = {};
+
+            if (totalCount === 0) {
+                updateBody.gcp_workinggcpclickbyuser1 = userValue;
+                updateBody.gcp_workinggcpclickcount = 1;
+            } else if (totalCount === 1) {
+                updateBody.gcp_workinggcpclickbyuser2 = userValue;
+                updateBody.gcp_workinggcpclickcount = 2;
+                // } else if (totalCount === 2) {
+                //     updateBody.gcp_workinggcpclickbyuser3 = userValue;
+                //     updateBody.gcp_workinggcpclickcount = 3;
+            } else {
+                updateBody.gcp_requeststatus = 5;
+            }
+
+            await updateRequestRecord(requestId, updateBody);
+
+            window.location.replace(window.location.pathname + window.location.search);
+        });
+    }
+
+
+    function addUploadReportButton() {
+        const html = `
+      <div class="text-end pb-3">
+        <button type="button" class="btn btn-primary" id="uploadReportBtn" data-id="${esc(id)}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>Upload Review Report
+        </button>
+      </div>`;
+
+        document.getElementById("view_form")?.insertAdjacentHTML("afterend", html);
+
+        // Add click handler for navigation
+        document.getElementById("uploadReportBtn")?.addEventListener("click", function () {
+            window.location.href = `/submit/upload-review-report/?id=${esc(id)}&type=${esc(type)}`;
+        });
+    }
+    function addEndorsmentButton() {
+        const html = `
+      <div class="text-end pb-3">
+        <button type="button" class="btn btn-primary" id="endorsementBtn" data-id="${esc(id)}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>Endorsement Letter
+        </button>
+      </div>`;
+
+        document.getElementById("view_form")?.insertAdjacentHTML("afterend", html);
+
+        // Add click handler for navigation
+        document.getElementById("endorsementBtn")?.addEventListener("click", function () {
+            window.location.href = `/endorsement-letter/?id=${esc(id)}&type=${esc(type)}`;
+        });
+    }
+    function addAckButton() {
+        const html = `
+      <div class="text-end pb-3">
+        <button type="button" class="btn btn-primary" id="ackBtn" data-id="${esc(id)}">
+         Acknowledgement Letter
+        </button>
+      </div>`;
+
+        document.getElementById("view_form")?.insertAdjacentHTML("afterend", html);
+
+        // Add click handler for navigation
+        document.getElementById("ackBtn")?.addEventListener("click", function () {
+            window.location.href = `/acknowledgement-letter/?id=${esc(id)}&type=${esc(type)}`;
+        });
+    }
+
+    function addAcceptButton() {
+        const html = `
+      <div class="text-end pb-3">
+        <button type="button" class="btn btn-primary" id="acceptBtn" data-id="${esc(id)}" aria-label="Accept Request">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>Accept Review
+        </button>
+      </div>`;
+
+        document.getElementById("view_form")?.insertAdjacentHTML("afterend", html);
+    }
+
+    async function handleSignatureSection(requestStatus, workinggcpcObj) {
+
+        if (requestStatus === STATUS.DraftReview || requestStatus === STATUS.PendingReview || requestStatus === STATUS.RS) {
+            document.getElementById('editFormBtn').classList.add('d-flex')
+            document.getElementById('editFormBtn').classList.remove('d-none')
+        } else {
+            document.getElementById('editFormBtn').classList.remove('d-flex')
+            document.getElementById('editFormBtn').classList.add('d-none')
+        }
+
+        if (requestStatus === STATUS.DraftReview) {
+            addPendingReviewButton(workinggcpcObj);
+            return;
+        }
+        if (requestStatus === STATUS.PendingAck) {
+            addAckButton();
+            return;
+        }
+
+        // For PendingReview: show signature section and Accept button
+        if ([5, 6, 7].includes(requestStatus)) {
+            const container = document.getElementById("view_form");
+            const SignHtml = await getSignatureSectionHtml();
+            container?.insertAdjacentHTML("beforeend", SignHtml);
+
+            if (hasRequiredSignatures()) {
+                addAcceptButton();
+            }
+
+            if (container) {
+                setupImageExpander();
+            }
+        }
+        if ([8, 9, 10, 11, 12].includes(requestStatus)) {
+            const container = document.getElementById("view_form");
+            const SignHtml = await getSignatureSectionHtml();
+            container?.insertAdjacentHTML("beforeend", SignHtml);
+
+            if (hasRequiredSignatures()) {
+                addEndorsmentButton();
+            }
+
+            if (container) {
+                setupImageExpander();
+            }
+        }
+    }
+
+    // ============================================================================
+    // SECTION RENDERERS
+    // ============================================================================
+
+    function renderVerifierSection(statusVal, vComments, reqid, requestRecord) {
+        const s = typeof statusVal === "number" ? statusVal : -1;
+
+        // Only show General Review section if verifier decision has been made
+        if (s === STATUS.R || s >= STATUS.DraftReview) {
+            if (!vComments || vComments.trim() === "") {
+                return "";
+            }
+            
+            const decisionCodeVal = requestRecord?.gcp_decisioncode || null;
+            const decisionLabel = decisionCodeVal ? DECISION_CODE_MAP[String(decisionCodeVal)] || "—" : "—";
+            
+            return `
+            <div class="bg-secondary p-2 text-light fw-medium rounded h5 mt-4">General Review</div>
+            ${fldMultiline("Verifier Comment", vComments, 'VerifierComment')}
+            ${fld("Decision Code", decisionLabel)}`;
+        }
+
+        return "";
+    }
+
+    const allowedStatuses = [
+        STATUS.DraftReview,
+        STATUS.PendingReview,
+        STATUS.CompleteReview,
+        STATUS.PendingAcceptance,
+        STATUS.CompleteAcceptance,
+        STATUS.PendingAck,
+        STATUS.ACK,
+        STATUS.PendingEndorse,
+        STATUS.E,
+        STATUS.NC3,
+        STATUS.NC4,
+        STATUS.W
+    ];
+    function renderReviewerSection(statusVal, infoCriteriaHtml, reviewerComments, reqid, requestRecord) {
+        const s = Number(statusVal);
+
+        if (!allowedStatuses.includes(s)) return "";
+        if (!requestRecord) {
+            console.warn("⚠️ requestRecord is undefined — skipping render");
+            return "";
+        }
+
+        const safeHtml = sanitizeReviewHtml(infoCriteriaHtml);
+        let currentDecesionCode = requestRecord.gcp_decisioncode
+
+        const radiosHtml = REVIEW_CODES.map(opt => {
+            const inputId = `${opt.value}-${reqid}`;
+            const checked = opt.value === String(currentDecesionCode) ? "checked" : "";
+            return `
+        <label class="fx-choice" for="${inputId}">
+          <input type="radio" id="${inputId}" name="reviewCode-${reqid}" ${checked} value="${opt.value}" disabled>
+          <span class="fx-box" aria-hidden="true"></span>
+          <span>${opt.label}</span>
+        </label>`;
+        }).join("");
+
+        // <div class="bg-secondary p-2 text-light fw-medium rounded h5 mt-4 d-flex align-items-center justify-content-between">
+        //   <span>General Review</span>
+        // </div>
+        return `
+                ${fldMultiline("General Review", reviewerComments, 'ReviewerComments')}
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong class="fw-medium d-block">Review Codes</strong>
+                        <em id='suggestionLabel' class="small text-primary btn">Available Suggestions <em id='suggestionCount' class='ms-1'></em></em>
+                    </div>
+                    <div class="border rounded p-2">
+                    ${radiosHtml}
+                    </div>
+                </div>
+                <button type="button" id='giveSuggestionBtn' class="btn btn-sm btn-outline-primary d-flex align-items-center text-primary border border-primary">
+                    <span class="me-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M7 11h10"/><path d="M7 15h6"/><path d="M7 7h8"/></svg>
+                    </span>
+                    Give Suggestion
+                </button>
+                `;
+    }
+
+    // ============================================================================
+    // FORM RENDERING
+    // ============================================================================
+
+    const formRenderers = {
+        [REQUEST_TYPES.RTP]: (data) => render_RTP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), STATUS),
+        [REQUEST_TYPES.PBL]: (data, bidders) => render_PBL_Request(data, bidders, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, renderBiddersTable, STATUS),
+        [REQUEST_TYPES.JVP]: (data) => render_JVP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.STSP]: (data) => render_STSP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.CAA]: (data) => render_CAA_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.PCCA]: (data) => render_PCCA_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.PP]: (data) => render_PP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.VAP]: (data) => render_VAP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.Other]: (data) => render_Other_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.GCPOther]: (data) => render_Other_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.CI]: (data) => render_CI_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.CPR]: (data) => render_CPR_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.RPCCA]: (data) => render_RPCCA_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS),
+        [REQUEST_TYPES.RPP]: (data) => render_RPP_Request(data, fld, fldMultiline, esc, (s, v, r, rec) => renderVerifierSection(s, v, r, rec), renderReviewerSection, STATUS)
+    };
+
+    async function renderForm(requestData, type) {
+        const renderer = formRenderers[type];
+
+        if (!renderer) {
+            console.warn("Unsupported type:", type);
+            return;
+        }
+
+        if (type === REQUEST_TYPES.PBL) {
+            const pblRequestId = (requestData.gcp_pblrequest_Request_gcp_request || [])[0]?.gcp_pblrequestid;
+            const biddersData = await fetchBiddersData(pblRequestId);
+            renderer(requestData, biddersData);
+        } else {
+            renderer(requestData);
+        }
+    }
+
+    // ============================================================================
+    // NAVIGATION
+    // ============================================================================
+
+    const navigationHandlers = {
+        editVerifierBtn: (rid) => `/verify/?verifyid=${rid}&type=${type}`,
+        editReviewerBtn: (rid) => `/review/?reviewid=${rid}&type=${type}`,
+        reviewBtn: (rid) => `/review/?reviewid=${rid}&type=${type}&documentid=${encodeURIComponent(documentId)}`,
+        BookEngagmentBtn: (rid) => `/book-engagement?id=${rid}`,
+    };
+
+    function handleNavigation(e) {
+        const button = e.target?.closest('button');
+        const buttonId = button?.id;
+
+        if (!buttonId) return;
+
+        // Handle verifyBtn modal trigger
+        if (buttonId === "verifyBtn") {
+            e.preventDefault();
+            const modal = new bootstrap.Modal(document.getElementById('verifyRequestModal'));
+            modal.show();
+            return;
+        }
+
+        if (!navigationHandlers[buttonId]) return;
+
+        e.preventDefault();
+
+        const rid = button.getAttribute("data-id");
+
+        if (!rid) {
+            showError("Missing request ID.");
+            return;
+        }
+
+        const url = navigationHandlers[buttonId](rid);
+        window.location.href = url;
+    }
+
+    function handleDocusignLink(e) {
+        const link = e.target.closest(".docusign-link");
+
+        if (!link || !id) return;
+
+        e.preventDefault();
+        window.location.href = `/docusign/?id=${id}&type=${type}${documentId ? `&documentid=${documentId}` : ''}`;
+    }
+
+    // ============================================================================
+    // SUBGRID DISPLAY
+    // ============================================================================
+
+    function setupSubgridDisplay() {
+        Object.values(SUBGRID_IDS).forEach(gridId => {
+            const element = document.getElementById(gridId);
+            if (element) element.style.display = "none";
+        });
+
+        const activeSubgrid = SUBGRID_IDS[type];
+        if (activeSubgrid) {
+            const element = document.getElementById(activeSubgrid);
+            if (element) element.style.display = "block";
+        }
+    }
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
+    async function init() {
+        showLoader("Loading request...");
+
+        try {
+            if (!id) {
+                console.warn("No 'id' found in query string.");
+                return;
+            }
+
+            const requestData = await fetchRequestData();
+            if (!requestData) return;
+
+            await renderForm(requestData, type);
+
+            const requestStatus = type === '1' || type === '2' || type === "3" ? requestData.gcp_requeststatus : requestData.value[0].gcp_requeststatus;
+            const workingGCPclickCount = type === '1' || type === '2' || type === "3" ? requestData.gcp_workinggcpclickcount : requestData.value[0].gcp_workinggcpclickcount;
+            const workinggcpclickbyuser1 = type === '1' || type === '2' || type === "3" ? requestData.gcp_workinggcpclickbyuser1 : requestData.value[0].gcp_workinggcpclickbyuser1;
+            const workinggcpclickbyuser2 = type === '1' || type === '2' || type === "3" ? requestData.gcp_workinggcpclickbyuser2 : requestData.value[0].gcp_workinggcpclickbyuser2;
+            const workinggcpclickbyuser3 = type === '1' || type === '2' || type === "3" ? requestData.gcp_workinggcpclickbyuser3 : requestData.value[0].gcp_workinggcpclickbyuser3;
+            let workinggcpcObj = {
+                workingGCPclickCount,
+                workinggcpclickbyuser1,
+                workinggcpclickbyuser2,
+                workinggcpclickbyuser3
+            }
+            handleSignatureSection(requestStatus, workinggcpcObj);
+
+        } catch (e) {
+            console.error("Fetch error:", e);
+            showError("Failed to load request. Please try again.");
+        } finally {
+            hideLoader();
+        }
+    }
+
+    // ============================================================================
+    // EVENT LISTENERS
+    // ============================================================================
+
+    // Helper: Render Decision Code Options in Modal
+    function renderDecisionCodeOptions() {
+        const container = document.getElementById('decisionCodeOptions');
+        if (!container) return;
+        const html = REVIEW_CODES.map(opt => {
+            return `
+            <label class="fx-choice">
+                <input type="radio" name="decisionCode" value="${opt.value}">
+                <span class="fx-box" aria-hidden="true"></span>
+                <span>${opt.label}</span>
+            </label>`;
+        }).join('');
+        container.innerHTML = html;
+    }
+
+    document.addEventListener("DOMContentLoaded", async function () {
+        loader = document.getElementById("pageLoader");
+
+        setupSubgridDisplay();
+        renderDecisionCodeOptions();
+        init();
+
+        document.getElementById("view_form")?.addEventListener("click", handleNavigation);
+        document.getElementById("view_form")?.addEventListener("click", handleDocusignLink);
+        document.getElementById("backNavigation")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            goBack();
+        });
+        document.getElementById("printForm")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            printForm()
+        });
+
+        function getEditFormURL(id, type) {
+            const cleanId = String(id).trim();
+            if (!cleanId) {
+                console.warn("getEditFormURL: Invalid or missing ID");
+                return null;
+            }
+
+            const typeNum = Number(type);
+            if (!Number.isInteger(typeNum) || typeNum < 1 || typeNum > 14) {
+                console.warn(`getEditFormURL: Invalid type '${type}'.`);
+                return null;
+            }
+
+            const formPaths = {
+                1: "rtp-form",
+                2: "pbl-form",
+                3: "jvp-form",
+                4: "stsp-form",
+                5: "caa-form",
+                6: "pcca-form",
+                7: "pp-form",
+                8: "vap-form",
+                9: "other-form",
+                10: "rpcca-form",
+                11: "ci-form",
+                12: "cpr-form",
+                14: "rpp-form",
+            };
+
+            const path = formPaths[typeNum];
+            if (!path) return null;
+
+            return `/submit/${path}/?id=${esc(cleanId)}&type=${esc(typeNum)}&editform=true`;
+        }
+
+        document.getElementById("pageForm").addEventListener("click", function (e) {
+            if (e.target?.id === "acceptBtn" || e.target?.closest("#acceptBtn")) {
+                e.preventDefault();
+                if (e.target?.id === "acceptBtn" || e.target?.closest("#acceptBtn")) {
+                    const rid = e.target.getAttribute("data-id");
+                    window.location.href = `/review-acceptance/?id=${esc(rid)}&type=${esc(type)}`;
+                }
+            }
+            else if (e.target?.id === "editForm" || e.target?.closest("#editForm")) {
+                e.preventDefault();
+                const urlEditForm = getEditFormURL(id, type);
+                window.location.href = urlEditForm
+            }
+            else if (e.target?.id === "giveSuggestionBtn" || e.target?.closest("#giveSuggestionBtn")) {
+                e.preventDefault();
+                const modal = new bootstrap.Modal(document.getElementById('suggestionModal'));
+                modal.show();
+            }
+        });
+
+        document.getElementById("submitSuggestion").addEventListener("click", async (e) => {
+            e.preventDefault();
+            const text = document.getElementById("suggestionText").value.trim();
+            if (!text) {
+                alert("Suggestion cannot be empty.");
+                return;
+            }
+            let CurrentLoggedInUser = getCurrentUser()
+            const userName = CurrentLoggedInUser.name;
+            const userId = CurrentLoggedInUser.id
+
+            const body = {
+                "gcp_suggestiontext": text,
+                "gcp_suggestionby": CurrentLoggedInUser.name,
+                "gcp_Request@odata.bind": `/gcp_requests(${id})`,
+                "gcp_Contact@odata.bind": `/contacts(${CurrentLoggedInUser.id})`
+            };
+
+            try {
+                const result = await createSuggestionRecord(body)
+                console.log("Suggestion created:", result);
+
+                bootstrap.Modal.getInstance(
+                    document.getElementById('suggestionModal')
+                ).hide();
+
+                let allSuggestions = await getSuggestionsByRequest(id);
+                console.log(allSuggestions)
+                setSuggestionsCode(allSuggestions.count)
+                document.getElementById("suggestionText").value = "";
+
+            } catch (err) {
+                console.error("Error creating suggestion:", err);
+                alert("Failed to save suggestion.");
+            }
+        });
+
+        let allSuggestions = await getSuggestionsByRequest(id);
+        console.log(allSuggestions)
+        setSuggestionsCode(allSuggestions.count)
+        function setSuggestionsCode(count) {
+            document.getElementById('suggestionCount').innerText = count ? `(${count})` : 'N/A';
+        }
+
+        // ==========================================================
+        // NEW FEATURE: Open Suggestions Accordion Modal on click
+        // ==========================================================
+        document.getElementById("suggestionLabel")?.addEventListener("click", async () => {
+            try {
+                const suggestionsData = await getSuggestionsByRequest(id);
+                if (!suggestionsData) return;
+
+                renderSuggestionsAccordion(suggestionsData);
+
+                const modal = new bootstrap.Modal(document.getElementById('allSuggestionsModal'));
+                modal.show();
+
+            } catch (err) {
+                console.error("Error showing suggestions modal:", err);
+            }
+        });
+        // ==========================================================
+        // NEW FUNCTION: Render Suggestions Accordion
+        // ==========================================================
+        function renderSuggestionsAccordion(data) {
+            const user = getCurrentUser();
+            const list = data.suggestions || [];
+            let html = "";
+
+            list.forEach((s, index) => {
+                const isOwner = s.contactId === user.id;
+                const itemId = `sg_${index}`;
+
+                // ================================
+                // NEW: Create truncated summary
+                // ================================
+                const summaryText = s.suggestionText.length > 25 ? s.suggestionText.substring(0, 15) + "..." : s.suggestionText;
+
+                // ================================
+                // NEW: Date only (no time)
+                // ================================
+                const createdDate = new Date(s.createdOn).toLocaleDateString();
+
+                html += `
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="heading${itemId}">
+
+                <!-- NEW: Updated accordion header layout -->
+                <button type="button"  class="accordion-button collapsed"  data-bs-toggle="collapse"  data-bs-target="#collapse${itemId}">
+
+                    <div class="w-100">
+                        <div class="fw-semibold">${summaryText}</div>
+
+                        <div class="text-muted small mt-1">
+                            ${s.contactName} • ${createdDate}
+                        </div>
+                    </div>
+
+                </button>
+            </h2>
+
+            <div id="collapse${itemId}"  class="accordion-collapse collapse"   data-bs-parent="#suggestionsAccordion">
+                <div class="accordion-body">
+                    <textarea class="form-control mb-2 suggestionTextArea" data-id="${s.id}" ${isOwner ? "" : "readonly"}>${s.suggestionText}</textarea>
+                   ${isOwner ? `<label class="form-label small mb-1">Accepted?</label><select class="form-select form-select-sm mb-2 suggestionAccepted" data-id="${s.id}">
+                    <option value="">Select...</option><option value="true" ${s.suggestionAccepted ? "selected" : ""}>Yes</option>
+                    <option value="false" ${s.suggestionAccepted === false ? "selected" : ""}>No</option></select>` : ""}
+
+                    ${isOwner ?
+                        `<button type="button" class="btn btn-primary btn-sm d-none updateSuggestionBtn" data-id="${s.id}">Update</button>
+                         <button type="button" class="btn btn-danger btn-sm ms-1 deleteSuggestionBtn" data-id="${s.id}">Delete</button>`
+                        : ""}
+
+
+                </div>
+
+            </div>
+        </div>`;
+            });
+
+            document.getElementById("suggestionsAccordion").innerHTML = html;
+        }
+
+
+        // ==========================================================
+        // NEW: Delete Suggestion Handler
+        // ==========================================================
+        document.addEventListener("click", async (e) => {
+            if (!e.target.classList.contains("deleteSuggestionBtn")) return;
+
+            const suggestionId = e.target.getAttribute("data-id");
+            if (!suggestionId) return;
+
+            if (!confirm("Do you want to delete this suggestion?")) return;
+
+            try {
+                await deleteSuggestion(suggestionId);
+
+                const updated = await getSuggestionsByRequest(id);
+                renderSuggestionsAccordion(updated);
+                document.getElementById('suggestionCount').innerText = updated.count;
+
+            } catch (err) {
+                console.error("Delete failed:", err);
+                alert("Failed to delete suggestion.");
+            }
+        });
+
+
+        // NEW: Manual update
+        document.addEventListener("click", async (e) => {
+            if (!e.target.classList.contains("updateSuggestionBtn")) return;
+            const id = e.target.getAttribute("data-id");
+            const parent = e.target.closest(".accordion-body");
+            const text = parent.querySelector(".suggestionTextArea").value.trim();
+            const acceptedRaw = parent.querySelector(".suggestionAccepted")?.value;
+            const accepted = acceptedRaw === "" ? null : acceptedRaw === "true";
+            const body = {
+                gcp_suggestiontext: text,
+                gcp_suggestionaccepted: accepted
+            }
+            try {
+                await updateSuggestion(id, body);
+                e.target.classList.add("d-none");
+            } catch (err) {
+                console.error("Update failed", err);
+                alert("Failed to update suggestion.");
+            }
+        });
+
+
+        // NEW: Show Update button when user types
+        document.addEventListener("input", (e) => {
+            if (!e.target.classList.contains("suggestionTextArea")) return;
+            const parent = e.target.closest(".accordion-body");
+            const btn = parent.querySelector(".updateSuggestionBtn");
+            if (btn) btn.classList.remove("d-none");
+        });
+
+        // NEW: Show Update button when Yes/No dropdown changes
+        document.addEventListener("change", (e) => {
+            if (!e.target.classList.contains("suggestionAccepted")) return;
+            const parent = e.target.closest(".accordion-body");
+            const btn = parent.querySelector(".updateSuggestionBtn");
+            if (btn) btn.classList.remove("d-none");
+        });
+
+        // ==========================================================
+        // NEW: Verifier Modal Submit Handler
+        // ==========================================================
+        document.getElementById("submitVerifyBtn")?.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const comment = document.getElementById("verifierComment").value.trim();
+            const decisionCode = document.querySelector('input[name="decisionCode"]:checked')?.value;
+
+            if (!decisionCode) {
+                alert("Please select a decision code.");
+                return;
+            }
+
+            const patchBody = {
+                gcp_verifier_comment: comment || "",
+                gcp_decisioncode: Number(decisionCode),
+                gcp_verifydate: new Date().toISOString()
+            };
+
+            try {
+                await updateRequestRecord(id, patchBody);
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('verifyRequestModal')).hide();
+                
+                // Reload the page to reflect updated verifier info
+                window.location.replace(window.location.pathname + window.location.search);
+            } catch (err) {
+                console.error("Error submitting verification:", err);
+                alert("Failed to submit verification. Please try again.");
+            }
+        });
+
+        // if (performance.getEntriesByType("navigation")[0].type === "reload") {
+        //     window.location.replace(window.location.href);
+        // }
+
+
+    });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<div class="container">
+
+    <!-- ============================================= -->
+    <!-- NEW: All Suggestions Modal (Accordion Display) -->
+    <!-- ============================================= -->
+    <div class="modal fade" id="allSuggestionsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">All Suggestions</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="accordion" id="suggestionsAccordion">
+                        <!-- Dynamic items will be inserted here -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Verifier Modal -->
+    <div class="modal fade" id="verifyRequestModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Verify Request Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group mb-3">
+                        <label class="form-label fw-bold">Verifier Comment</label>
+                        <textarea id="verifierComment" class="form-control" rows="4" placeholder="Enter your verification comment..."></textarea>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="form-label fw-bold">Decision Code</label>
+                        <div id="decisionCodeOptions" class="border rounded p-3">
+                            <!-- Decision codes will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitVerifyBtn">Submit Verification</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="suggestionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Give Suggestion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <textarea id="suggestionText" class="form-control" rows="5"
+                        placeholder="Type your suggestion here..."></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="submitSuggestion">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between">
+        <div>
+            <button type="button" class="btn btn-primary my-2" id="backNavigation">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-chevron-left">
+                    <path d="m15 18-6-6 6-6" />
+                </svg>Back
+            </button>
+        </div>
+        <div>
+            <button type="button" class="btn btn-success my-2" id="printForm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-printer me-2">
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                    <path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6" />
+                    <rect x="6" y="14" width="12" height="8" rx="1" />
+                </svg>Print
+            </button>
+        </div>
+    </div>
+
+    {% assign type = request.params.type %}
+
+    {% if type == "1" %}
+    <div id="subgrid-rtp">
+        {% entityform name: 'Doc Subgrid RTP' %}
+    </div>
+    {% elsif type == "2" %}
+    <div id="subgrid-pbl">
+        {% entityform name: 'Doc Subgrid BPL' %}
+    </div>
+    {% elsif type == "3" %}
+    <div id="subgrid-jvp">
+        {% entityform name: 'Doc Subgrid JVP' %}
+    </div>
+    {% elsif type == "4" %}
+    <div id="subgrid-stsp">
+        {% entityform name: 'Doc Subgrid STSP' %}
+    </div>
+    {% elsif type == "5" %}
+    <div id="subgrid-caa">
+        {% entityform name: 'Doc Subgrid Caa' %}
+    </div>
+    {% elsif type == "6" %}
+    <div id="subgrid-pcca">
+        {% entityform name: 'Doc Subgrid pcca' %}
+    </div>
+    {% elsif type == "7" %}
+    <div id="subgrid-pp">
+        {% entityform name: 'Doc Subgrid PP' %}
+    </div>
+    {% elsif type == "8" %}
+    <div id="subgrid-vap">
+        {% entityform name: 'Doc Subgrid VAP' %}
+    </div>
+    {% elsif type == "9" %}
+    <div id="subgrid-other">
+        {% entityform name: 'Doc Subgrid Other' %}
+    </div>
+    {% elsif type == "11" %}
+    <div id="subgrid-ci">
+        {% entityform name: 'Doc Subgrid CI' %}
+    </div>
+    {% elsif type == "12" %}
+    <div id="subgrid-cpr">
+        {% entityform name: 'Doc Subgrid CPR' %}
+    </div>
+    {% elsif type == "10" %}
+    <div id="subgrid-rpcca">
+        {% entityform name: 'Doc Subgrid RPCCA' %}
+    </div>
+    {% elsif type == "14" %}
+    <div id="subgrid-rpp">
+        {% entityform name: 'Doc Subgrid RPP' %}
+    </div>
+    {% endif %}
+
+    <div id="pageLoader">Loading...</div>
+    <div id="pageForm">
+        <div class="d-none justify-content-end" id="editFormBtn">
+            <button type="button" class="btn btn-primary mt-2 d-flex align-items-center" id="editForm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-square-pen">
+                    <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path
+                        d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+                </svg>Edit Form Data
+            </button>
+        </div>
+        <!-- Form -->
+        <div id="view_form"></div>
+        <div id="signature_wrappwer" class="d-none"></div>
+    </div>
+</div>

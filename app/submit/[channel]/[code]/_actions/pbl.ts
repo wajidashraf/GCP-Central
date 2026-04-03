@@ -1,6 +1,5 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ensureProjectCode } from "@/lib/project-code";
@@ -75,8 +74,10 @@ export async function createPblBaseRequest(
       };
     } catch (error) {
       const isRequestNoConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002";
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: string }).code === "P2002";
 
       if (isRequestNoConflict) {
         continue;

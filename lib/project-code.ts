@@ -46,7 +46,8 @@ export async function buildNextProjectCode(
     },
   });
 
-  const maxSequence = existingProjectCodes.reduce((currentMax, project) => {
+  const maxSequence = existingProjectCodes.reduce(
+    (currentMax: number, project: typeof existingProjectCodes[number]) => {
     const code = project.projectCode?.trim();
     if (!code) {
       return currentMax;
@@ -54,7 +55,9 @@ export async function buildNextProjectCode(
 
     const sequence = extractProjectSequence(code, prefix);
     return sequence && sequence > currentMax ? sequence : currentMax;
-  }, 0);
+    },
+    0
+  );
 
   const nextSequence = `${maxSequence + 1}`.padStart(sequenceWidth, "0");
   return `${prefix}-${nextSequence}`;

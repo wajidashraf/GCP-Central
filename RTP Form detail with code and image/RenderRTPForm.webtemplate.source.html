@@ -1,0 +1,100 @@
+<script>
+  function buildRtpActionButtons(reqid, statusVal, STATUS) {
+    const roles = window.requestDetailRoles || {};
+    const actions = [];
+
+    if ((roles.isVerifier || roles.isAdmin) && statusVal === STATUS.New) {
+      actions.push(`<button class="btn btn-primary" id="verifyBtn" data-id="${reqid}">Verify Request Data</button>`);
+    }
+
+    if ((roles.isReviewer || roles.isAdmin) && statusVal === STATUS.R) {
+      actions.push(`<button class="btn btn-primary" id="reviewBtn" data-id="${reqid}">Review Request Data</button>`);
+    }
+
+    if ((roles.isRequestor || roles.isAdmin) && statusVal === STATUS.ReadyForEngagement) {
+      actions.push(`<button class="btn btn-primary" id="BookEngagmentBtn" data-id="${reqid}">Book Engagement</button>`);
+    }
+
+    return actions.join('<span class="ms-2"></span>');
+  }
+
+  function renderSectionHeading(title, extraClass = "") {
+    return `<div class="bg-secondary p-2 text-light fw-medium rounded h5 ${extraClass}">${title}</div>`;
+  }
+
+  function render_RTP_Request(res, fld, fldMultiline, esc, renderVerifierSection, STATUS) {
+    const el = document.getElementById('view_form') || document.body;
+    const reqid = res.gcp_requestid || "";
+    const matterLbl = res["gcp_mattertype@OData.Community.Display.V1.FormattedValue"] || "";
+    const catLbl = res["gcp_category@OData.Community.Display.V1.FormattedValue"] || "";
+    const reqTitle = res.gcp_requesttitle || "";
+    const email = res.gcp_requestoremail || "";
+    const reqName = res["_gcp_requestorname_value@OData.Community.Display.V1.FormattedValue"] || "";
+    const statusLbl = res["gcp_requeststatus@OData.Community.Display.V1.FormattedValue"] || "";
+    const statusVal = (typeof res.gcp_requeststatus === "number") ? res.gcp_requeststatus : null;
+    const vComments = res.gcp_verifier_comment || "";
+    const rtp = (res.gcp_rtprequest_Request_gcp_request || [])[0] || {};
+    const client = rtp.gcp_client_name_text || "";
+    const projDesc = rtp.gcp_projectdescription || "";
+    const projName = rtp.gcp_projectname || "";
+    const regTypeLbl = rtp["gcp_registrationtype@OData.Community.Display.V1.FormattedValue"] || "";
+    const tCloseLbl = rtp["gcp_tenderclosingdate@OData.Community.Display.V1.FormattedValue"] || "";
+    const acknowledgementLbl = rtp["gcp_acknowledgement@OData.Community.Display.V1.FormattedValue"] ?? (rtp.gcp_acknowledgement ? "Yes" : "No");
+    const verifierSection = renderVerifierSection(statusVal, vComments, reqid, res);
+    const footerButtons = buildRtpActionButtons(reqid, statusVal, STATUS);
+
+    el.innerHTML = `
+    <div class="py-4">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h4 class="mb-0">
+            ${esc(matterLbl)}
+            <span class="badge bg-info ms-3">${esc(catLbl)}</span>
+            <span class="d-block"><small><em class="fw-bold">${esc(reqTitle)}</em></small></span>
+          </h4>
+          <h4 class="mb-0">Status: <span class="badge bg-dark ms-3">${esc(statusLbl)}</span></h4>
+        </div>
+        <div class="card-body">
+          ${renderSectionHeading("Document Header")}
+          <div id="documentHeaderSection" class="mb-3">
+            <div id="documentHeaderLinks" class="d-flex flex-column gap-2"></div>
+          </div>
+
+          ${renderSectionHeading("Basic Information", "mt-3")}
+          <div class="row">
+            <div class="col-12 col-lg-6">
+              ${fld("Category", catLbl)}
+              ${fld("Form Type", matterLbl)}
+              ${fld("Requester Name", reqName)}
+            </div>
+            <div class="col-12 col-lg-6">
+              ${fld("Requester Email", email)}
+              ${fld("Project Name", projName)}
+              ${fld("Acknowledgement", acknowledgementLbl)}
+            </div>
+          </div>
+
+          ${renderSectionHeading("Detailed Information", "mt-3")}
+          <div class="row">
+            <div class="col-12 col-lg-6">
+              ${fld("Client", client)}
+              ${fld("Registration Type", regTypeLbl)}
+            </div>
+            <div class="col-12 col-lg-6">
+              ${fld("Tender Closing Date", tCloseLbl)}
+            </div>
+          </div>
+          ${fldMultiline("Project Description", projDesc)}
+
+          ${verifierSection}
+
+          <div id="reviewerNotificationsSection"></div>
+        </div>
+      </div>
+      <div class="card-footer text-end">
+        ${footerButtons}
+      </div>
+    </div>`;
+  }
+  window.render_RTP_Request = render_RTP_Request;
+</script>
