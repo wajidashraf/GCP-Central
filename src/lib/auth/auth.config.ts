@@ -110,9 +110,7 @@ export const authConfig = {
           typeof token.role === "string" ? token.role : undefined
         );
         session.user.roles = Array.isArray(token.roles)
-          ? token.roles
-              .filter((role): role is string => typeof role === "string")
-              .map((role) => normalizeRole(role))
+          ? token.roles.map((role) => normalizeRole(role))
           : [session.user.role];
         session.user.companyId =
           typeof token.companyId === "string" ? token.companyId : undefined;
