@@ -1,15 +1,28 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from "@prisma/client";
 
-const prismaClientSingleton = () => {
-  return new PrismaClient()
+type GlobalPrismaState = {
+  prismaGlobal?: PrismaClient;
+};
+
+const globalForPrisma = globalThis as unknown as GlobalPrismaState;
+
+function createPrismaClient() {
+  return new PrismaClient();
 }
 
-declare const globalThis: {
-  prismaGlobal: ReturnType<typeof prismaClientSingleton>;
-} & typeof global;
+function hasExpectedDelegates(client: PrismaClient) {
+  const delegates = client as PrismaClient & { jvpRequest?: unknown };
+  return typeof delegates.jvpRequest !== "undefined";
+}
 
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
+let prisma = globalForPrisma.prismaGlobal ?? createPrismaClient();
 
-export default prisma
+if (!hasExpectedDelegates(prisma)) {
+  prisma = createPrismaClient();
+}
 
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prismaGlobal = prisma;
+}
+
+export default prisma;

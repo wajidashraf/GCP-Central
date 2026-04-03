@@ -2,6 +2,35 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Role {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  email         String
+  emailLower    String   @unique
+  username      String
+  usernameLower String   @unique
+  passwordHash  String
+  primaryRole   String
+  roles         String[]
+  companyId     String?  @db.ObjectId
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([primaryRole])
+}
+
 datasource db {
   provider = "mongodb"
   url      = env("MONGODB_URI")
@@ -17,6 +46,7 @@ model Company {
 
   requests Request[]
   projects Project[]
+  users    User[]
 }
 
 model Request {
@@ -38,8 +68,10 @@ model Request {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  company  Company    @relation(fields: [companyId], references: [id])
+  company  Company     @relation(fields: [companyId], references: [id])
   rtp      RtpRequest?
+  pbl      PblRequest?
+  jvp      JvpRequest?
   projects Project[]
 
   @@index([requestType, routingType])
@@ -53,6 +85,7 @@ model Project {
   companyCode          String
   companyName          String
   projectName          String
+  projectCode          String?
   createdFromRequestId String?  @db.ObjectId
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -60,33 +93,122 @@ model Project {
   company     Company      @relation(fields: [companyId], references: [id])
   request     Request?     @relation(fields: [createdFromRequestId], references: [id])
   rtpRequests RtpRequest[]
+  pblRequests PblRequest[]
+  jvpRequests JvpRequest[]
 
   @@index([companyId])
   @@index([createdFromRequestId])
   @@index([projectName])
+  @@index([projectCode])
 }
 
 model RtpRequest {
-  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
-  requestId          String   @unique @db.ObjectId
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  requestId          String    @unique @db.ObjectId
   clientName         String
   registrationType   Int
   tenderClosingDate  DateTime?
   projectName        String
   projectDescription String
-  specialProject     Boolean  @default(false)
+  specialProject     Boolean   @default(false)
   documentUrl        String?
   documentPublicId   String?
   documentFileName   String?
   documentMimeType   String?
   documentSizeBytes  Int?
-  projectId          String?  @db.ObjectId
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  projectId          String?   @db.ObjectId
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   request Request  @relation(fields: [requestId], references: [id])
   project Project? @relation(fields: [projectId], references: [id])
 
   @@index([projectId])
   @@index([projectName])
+}
+
+model PblRequest {
+  id                          String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId                   String   @unique @db.ObjectId
+  projectId                   String   @db.ObjectId
+  projectCode                 String?
+  procurementMethod           Int
+  justificationForLessBidders String?
+  documentUrl                 String?
+  documentPublicId            String?
+  documentFileName            String?
+  documentMimeType            String?
+  documentSizeBytes           Int?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  request Request     @relation(fields: [requestId], references: [id])
+  project Project     @relation(fields: [projectId], references: [id])
+  bidders PblBidder[]
+
+  @@index([projectId])
+  @@index([procurementMethod])
+}
+
+model JvpRequest {
+  id                          String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId                   String   @unique @db.ObjectId
+  projectId                   String   @db.ObjectId
+  projectCode                 String?
+  teamLeader                  String?
+  financialMatters            String?
+  technicalMatters            String?
+  contractMatters             String?
+  procurementMatters          String?
+  costingAndEstimationMatters String?
+  implementationStage         String?
+  backgroundOfCollabPoints    Json?
+  scopeOfCollabPoints         Json?
+  proposedStructurePoints     Json?
+  keyTermsPoints              Json?
+  financialOverviewPoints     Json?
+  technicalCapabilitiesPoints Json?
+  workPackagesDivisionPoints  Json?
+  resourcesContributionPoints Json?
+  riskReviewMitigationItems   Json?
+  cashflowForecastUrl         String?
+  cashflowForecastPublicId    String?
+  cashflowForecastFileName    String?
+  cashflowForecastMimeType    String?
+  cashflowForecastSizeBytes   Int?
+  costStructureUrl            String?
+  costStructurePublicId       String?
+  costStructureFileName       String?
+  costStructureMimeType       String?
+  costStructureSizeBytes      Int?
+  documentUrl                 String?
+  documentPublicId            String?
+  documentFileName            String?
+  documentMimeType            String?
+  documentSizeBytes           Int?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model PblBidder {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  pblRequestId     String   @db.ObjectId
+  companyName      String
+  location         String?
+  personInCharge   String
+  picContactNumber String
+  sourcesFrom      String
+  recommendationBy String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  pblRequest PblRequest @relation(fields: [pblRequestId], references: [id])
+
+  @@index([pblRequestId])
+  @@index([companyName])
 }

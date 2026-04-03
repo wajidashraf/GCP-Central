@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
-import {
-  CheckboxField,
-  InputField,
-  SelectField,
-  TextareaField,
-} from "@/src/components/forms/fields";
+import ConfigDrivenFieldsRenderer, {
+  resolveConfigValue,
+} from "@/src/components/forms/config-driven-fields";
 import MultiStepStepper from "@/src/components/forms/multi-step-stepper";
-import { REGISTRATION_TYPES } from "@/src/constants/enums";
+import {
+  clearPersistedFormState,
+  readPersistedFormState,
+  writePersistedFormState,
+} from "@/src/components/forms/session-storage";
+import UploadedDocumentPreview from "@/src/components/forms/uploaded-document-preview";
 import {
   createRtpBaseRequestSchema,
   saveRtpDetailsSchema,
@@ -24,6 +26,13 @@ import {
   saveRtpDetails,
   submitRtpRequest,
 } from "../_actions/rtp";
+import {
+  RTP_FORM_STEPS,
+  RTP_STEPPER_STEPS,
+  type RequestorContext,
+  type RtpDetailsState,
+  type RtpFormSchemaContext,
+} from "../_config/rtp-form-schema";
 
 type FieldErrors = Record<string, string[]>;
 
@@ -42,32 +51,14 @@ type UploadedDocument = {
   documentSizeBytes: number;
 };
 
-type RequestorContext = {
-  id: string;
-  name: string;
-  email: string;
-  companyId: string;
-  companyCode: string;
-  companyName: string;
-};
-
 type RtpMultiStepFormProps = {
   channel: "gcpc" | "gcp";
   requestTitle: string;
   requestor: RequestorContext;
 };
 
-const STEPS = [
-  { id: "basic-information", label: "Basic Information" },
-  { id: "project-details", label: "Project Details" },
-  { id: "documents", label: "Documents" },
-] as const;
 const MAX_FILE_SIZE_MB = RTP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
 const acceptedDocumentTypes = RTP_ALLOWED_DOCUMENT_MIME_TYPES.join(",");
-const registrationTypeOptions = REGISTRATION_TYPES.map((option) => ({
-  value: option.value,
-  label: option.label,
-}));
 const documentMetadataSchema = submitRtpRequestSchema.pick({
   documentUrl: true,
   documentPublicId: true,
@@ -75,22 +66,23 @@ const documentMetadataSchema = submitRtpRequestSchema.pick({
   documentMimeType: true,
   documentSizeBytes: true,
 });
+const RTP_SESSION_STORAGE_KEY = "gcp-central:form:rtp:v1";
+
+type PersistedRtpFormState = {
+  currentStep: number;
+  requestId: string | null;
+  requestNo: string | null;
+  projectId: string | null;
+  details: RtpDetailsState;
+  specialProject: boolean;
+  acknowledgement: boolean;
+  uploadedDocument: UploadedDocument | null;
+};
 
 function flattenFieldErrors(error: { flatten: () => { fieldErrors: FieldErrors } }) {
   return error.flatten().fieldErrors;
 }
 
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 export default function RtpMultiStepForm({
   channel,
@@ -106,7 +98,7 @@ export default function RtpMultiStepForm({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const [details, setDetails] = useState({
+  const [details, setDetails] = useState<RtpDetailsState>({
     clientName: "",
     registrationType: 1,
     tenderClosingDate: "",
@@ -123,8 +115,56 @@ export default function RtpMultiStepForm({
 
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [hasHydratedFromSession, setHasHydratedFromSession] = useState(false);
 
   const isBusy = isPending || isUploading;
+
+  useEffect(() => {
+    const persistedState = readPersistedFormState<PersistedRtpFormState>(
+      RTP_SESSION_STORAGE_KEY
+    );
+
+    if (persistedState) {
+      setCurrentStep(Math.min(Math.max(persistedState.currentStep, 1), RTP_FORM_STEPS.length));
+      setRequestId(persistedState.requestId);
+      setRequestNo(persistedState.requestNo);
+      setProjectId(persistedState.projectId);
+      setDetails(persistedState.details);
+      setSpecialProject(persistedState.specialProject);
+      setAcknowledgement(persistedState.acknowledgement);
+      setUploadedDocument(persistedState.uploadedDocument);
+    }
+
+    setHasHydratedFromSession(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedFromSession || isSubmitted) {
+      return;
+    }
+
+    writePersistedFormState<PersistedRtpFormState>(RTP_SESSION_STORAGE_KEY, {
+      currentStep,
+      requestId,
+      requestNo,
+      projectId,
+      details,
+      specialProject,
+      acknowledgement,
+      uploadedDocument,
+    });
+  }, [
+    acknowledgement,
+    currentStep,
+    details,
+    hasHydratedFromSession,
+    isSubmitted,
+    projectId,
+    requestId,
+    requestNo,
+    specialProject,
+    uploadedDocument,
+  ]);
 
   function setErrorState(message: string, errors?: FieldErrors) {
     setAlertState({ type: "error", message });
@@ -344,6 +384,7 @@ export default function RtpMultiStepForm({
       }
 
       setIsSubmitted(true);
+      clearPersistedFormState(RTP_SESSION_STORAGE_KEY);
       setAlertState({
         type: "success",
         message: `RTP request ${result.data.requestNo} submitted successfully.`,
@@ -352,9 +393,57 @@ export default function RtpMultiStepForm({
     });
   }
 
+  const schemaContext: RtpFormSchemaContext = {
+    requestTitle,
+    category,
+    requestor,
+    details,
+    updateDetails: (updates) =>
+      setDetails((current) => ({
+        ...current,
+        ...updates,
+      })),
+    acceptedDocumentTypes,
+    maxFileSizeMb: MAX_FILE_SIZE_MB,
+    onFileUpload: handleFileUpload,
+    acknowledgement,
+    setAcknowledgement,
+    specialProject,
+    setSpecialProject,
+  };
+
+  function getSchemaFieldError(fieldKey: string) {
+    if (fieldKey === "documentUpload") {
+      return documentUploadError;
+    }
+
+    return getFieldError(fieldKey);
+  }
+
+  const basicInfoStep = RTP_FORM_STEPS[0];
+  const projectDetailsStep = RTP_FORM_STEPS[1];
+  const documentsStep = RTP_FORM_STEPS[2];
+  const [documentUploadField, ...documentChecklistFields] = documentsStep.fields;
+  const basicInfoDescription = resolveConfigValue(
+    basicInfoStep.description,
+    schemaContext
+  );
+  const projectDetailsDescription = resolveConfigValue(
+    projectDetailsStep.description,
+    schemaContext
+  );
+  const documentsDescription = resolveConfigValue(
+    documentsStep.description,
+    schemaContext
+  );
+
   return (
     <div className="surface-card p-5 sm:p-6">
-      <MultiStepStepper steps={STEPS} currentStep={currentStep} isSubmitted={isSubmitted} />
+      <MultiStepStepper
+        steps={RTP_STEPPER_STEPS}
+        currentStep={currentStep}
+        isSubmitted={isSubmitted}
+      />
 
       {alertState ? (
         <div
@@ -379,21 +468,15 @@ export default function RtpMultiStepForm({
 
       {currentStep === 1 ? (
         <section className="space-y-4">
-          <p className="text-sm text-[var(--text-muted)]">
-            Request title, category, requestor details, and company are auto-populated and locked.
-          </p>
+          {basicInfoDescription ? (
+            <p className="text-sm text-[var(--text-muted)]">{basicInfoDescription}</p>
+          ) : null}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <InputField label="Request Title" value={requestTitle} readOnly inputClassName="bg-slate-50" />
-            <InputField label="Category" value={category} readOnly inputClassName="bg-slate-50" />
-            <InputField label="Requestor Name" value={requestor.name} readOnly inputClassName="bg-slate-50" />
-            <InputField label="Requestor Email" value={requestor.email} readOnly inputClassName="bg-slate-50" />
-            <InputField
-              label="Company"
-              value={`${requestor.companyName} (${requestor.companyCode})`}
-              readOnly
-              inputClassName="bg-slate-50"
-              containerClassName="md:col-span-2"
+          <div className={basicInfoStep.fieldsContainerClassName ?? "space-y-4"}>
+            <ConfigDrivenFieldsRenderer
+              fields={basicInfoStep.fields}
+              context={schemaContext}
+              getFieldError={getSchemaFieldError}
             />
           </div>
 
@@ -410,73 +493,17 @@ export default function RtpMultiStepForm({
 
       {currentStep === 2 ? (
         <section className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <InputField
-              label="Client Name"
-              value={details.clientName}
-              onChange={(event) =>
-                setDetails((current) => ({ ...current, clientName: event.target.value }))
-              }
-              placeholder="Enter client name"
-              error={getFieldError("clientName")}
-            />
+          {projectDetailsDescription ? (
+            <p className="text-sm text-[var(--text-muted)]">
+              {projectDetailsDescription}
+            </p>
+          ) : null}
 
-            <SelectField
-              label="Registration Type"
-              value={details.registrationType}
-              onChange={(event) =>
-                setDetails((current) => ({
-                  ...current,
-                  registrationType: Number(event.target.value),
-                }))
-              }
-              options={registrationTypeOptions}
-              error={getFieldError("registrationType")}
-            />
-
-            <InputField
-              label="Tender Closing Date"
-              type="date"
-              value={details.tenderClosingDate}
-              onChange={(event) =>
-                setDetails((current) => ({
-                  ...current,
-                  tenderClosingDate: event.target.value,
-                }))
-              }
-              error={getFieldError("tenderClosingDate")}
-            />
-
-            <InputField
-              label="Project Name"
-              value={details.projectName}
-              onChange={(event) =>
-                setDetails((current) => ({ ...current, projectName: event.target.value }))
-              }
-              placeholder="Enter project name"
-              error={getFieldError("projectName")}
-            />
-
-            <TextareaField
-              label="Project Description"
-              value={details.projectDescription}
-              onChange={(event) =>
-                setDetails((current) => ({
-                  ...current,
-                  projectDescription: event.target.value,
-                }))
-              }
-              placeholder="Describe project scope and objective"
-              error={getFieldError("projectDescription")}
-              containerClassName="md:col-span-2"
-            />
-
-            <InputField
-              label="Company"
-              value={`${requestor.companyName} (${requestor.companyCode})`}
-              readOnly
-              inputClassName="bg-slate-50"
-              containerClassName="md:col-span-2"
+          <div className={projectDetailsStep.fieldsContainerClassName ?? "space-y-4"}>
+            <ConfigDrivenFieldsRenderer
+              fields={projectDetailsStep.fields}
+              context={schemaContext}
+              getFieldError={getSchemaFieldError}
             />
           </div>
 
@@ -493,57 +520,36 @@ export default function RtpMultiStepForm({
 
       {currentStep === 3 ? (
         <section className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-[var(--text)]">Document Upload</label>
-            <input type="file" accept={acceptedDocumentTypes} onChange={handleFileUpload} className="input py-2" />
-            <p className="text-xs text-[var(--text-subtle)]">
-              Allowed: PDF, Word, Excel, JPG, PNG. Max size: {MAX_FILE_SIZE_MB}MB.
-            </p>
-            {getFieldError("documentFileName") ? (
-              <p className="text-xs text-[var(--danger-text)]">{getFieldError("documentFileName")}</p>
+          {documentsDescription ? (
+            <p className="text-sm text-[var(--text-muted)]">{documentsDescription}</p>
+          ) : null}
+
+          <div className={documentsStep.fieldsContainerClassName ?? "space-y-4"}>
+            {documentUploadField ? (
+              <ConfigDrivenFieldsRenderer
+                fields={[documentUploadField]}
+                context={schemaContext}
+                getFieldError={getSchemaFieldError}
+              />
             ) : null}
-            {getFieldError("documentMimeType") ? (
-              <p className="text-xs text-[var(--danger-text)]">{getFieldError("documentMimeType")}</p>
+
+            {uploadedDocument ? (
+              <UploadedDocumentPreview
+                documentUrl={uploadedDocument.documentUrl}
+                documentFileName={uploadedDocument.documentFileName}
+                documentMimeType={uploadedDocument.documentMimeType}
+                documentSizeBytes={uploadedDocument.documentSizeBytes}
+              />
             ) : null}
-            {getFieldError("documentSizeBytes") ? (
-              <p className="text-xs text-[var(--danger-text)]">{getFieldError("documentSizeBytes")}</p>
+
+            {documentChecklistFields.length > 0 ? (
+              <ConfigDrivenFieldsRenderer
+                fields={documentChecklistFields}
+                context={schemaContext}
+                getFieldError={getSchemaFieldError}
+              />
             ) : null}
           </div>
-
-          {uploadedDocument ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              <p className="font-medium">{uploadedDocument.documentFileName}</p>
-              <p className="mt-0.5 text-xs text-emerald-700/90">
-                {uploadedDocument.documentMimeType} • {formatFileSize(uploadedDocument.documentSizeBytes)}
-              </p>
-            </div>
-          ) : null}
-
-          <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
-            <input
-              type="checkbox"
-              checked={acknowledgement}
-              onChange={(event) => setAcknowledgement(event.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm text-[var(--text)]">
-              I acknowledge that the uploaded document and submitted details are accurate.
-              <span className="ml-1 text-[var(--danger-text)]">*</span>
-            </span>
-          </label>
-          {getFieldError("acknowledgement") ? (
-            <p className="text-xs text-[var(--danger-text)]">{getFieldError("acknowledgement")}</p>
-          ) : null}
-
-          <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
-            <input
-              type="checkbox"
-              checked={specialProject}
-              onChange={(event) => setSpecialProject(event.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm text-[var(--text)]">Special project (optional)</span>
-          </label>
 
           <div className="flex flex-wrap justify-between gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setCurrentStep(2)} disabled={isBusy || isSubmitted}>

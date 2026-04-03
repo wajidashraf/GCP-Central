@@ -3,7 +3,9 @@
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { buildNextProjectCode } from "@/lib/project-code";
 import prisma from "@/lib/prisma";
+import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
 import { buildNextRequestNo } from "@/lib/request-no";
 import {
   createRtpBaseRequestSchema,
@@ -175,12 +177,14 @@ export async function saveRtpDetails(
         },
       });
     } else {
+      const projectCode = await buildNextProjectCode();
       const project = await prisma.project.create({
         data: {
           companyId: payload.companyId,
           companyCode: payload.companyCode,
           companyName: payload.companyName,
           projectName: payload.projectName,
+          projectCode,
           createdFromRequestId: payload.requestId,
         },
       });
@@ -313,6 +317,7 @@ export async function submitRtpRequest(
 
     revalidatePath("/requests");
     revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
+    await notifyRequestSubmissionByEmail({ requestId: request.id });
 
     return {
       success: true,

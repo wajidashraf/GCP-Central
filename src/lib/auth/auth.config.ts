@@ -1,76 +1,128 @@
-/**
- * NextAuth.js Configuration
- *
- * STATUS: STUB — Authentication not yet implemented.
- *
- * When ready to implement:
- * 1. Install:  npm install next-auth@beta @auth/prisma-adapter
- * 2. Add to .env.local:
- *      NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
- *      NEXTAUTH_URL=http://localhost:3000
- *      AZURE_AD_CLIENT_ID=...        (if using Azure/Office 365)
- *      AZURE_AD_CLIENT_SECRET=...
- *      AZURE_AD_TENANT_ID=...
- * 3. Uncomment the block below and configure providers.
- */
+import { compare } from "bcryptjs";
+import type { NextAuthConfig } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+import prisma from "@/lib/prisma";
+import { USER_ROLES, type UserRole } from "@/src/types/auth";
 
-// import NextAuth, { type NextAuthConfig } from 'next-auth';
-// import AzureAD from 'next-auth/providers/azure-ad';
-// import CredentialsProvider from 'next-auth/providers/credentials';
-// import { PrismaAdapter } from '@auth/prisma-adapter';
-// import prisma from '@/lib/prisma';
-// import type { UserRole } from '@/src/types/auth';
-//
-// export const authConfig: NextAuthConfig = {
-//   adapter: PrismaAdapter(prisma),
-//
-//   providers: [
-//     // Option A — Azure Active Directory / Office 365 (recommended for enterprise)
-//     AzureAD({
-//       clientId:     process.env.AZURE_AD_CLIENT_ID!,
-//       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-//       tenantId:     process.env.AZURE_AD_TENANT_ID!,
-//     }),
-//
-//     // Option B — Email/Password credentials (development only)
-//     // CredentialsProvider({
-//     //   name: 'credentials',
-//     //   credentials: { email: {}, password: {} },
-//     //   async authorize(credentials) {
-//     //     // TODO: validate against User model in MongoDB
-//     //     return null;
-//     //   },
-//     // }),
-//   ],
-//
-//   callbacks: {
-//     async session({ session, token }) {
-//       // Attach role to session so it's available in getCurrentUser()
-//       if (token?.role) {
-//         session.user.role = token.role as UserRole;
-//       }
-//       return session;
-//     },
-//     async jwt({ token, user }) {
-//       if (user) {
-//         // Fetch role from DB when user first signs in
-//         const dbUser = await prisma.user.findUnique({
-//           where: { email: user.email! },
-//           select: { role: true },
-//         });
-//         token.role = dbUser?.role ?? 'requestor';
-//       }
-//       return token;
-//     },
-//   },
-//
-//   pages: {
-//     signIn: '/login',
-//     error:  '/login',
-//   },
-// };
-//
-// export const { auth, signIn, signOut } = NextAuth(authConfig);
+const FALLBACK_ROLE: UserRole = "requestor";
 
-// ─── Placeholder export until auth is implemented ────────────────
-export const authConfig = {} as const;
+function isUserRole(value: string): value is UserRole {
+  return (USER_ROLES as readonly string[]).includes(value);
+}
+
+function normalizeRole(value: string | null | undefined): UserRole {
+  if (!value) {
+    return FALLBACK_ROLE;
+  }
+
+  return isUserRole(value) ? value : FALLBACK_ROLE;
+}
+
+function readCredentialValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export const authConfig = {
+  session: {
+    strategy: "jwt",
+  },
+  providers: [
+    Credentials({
+      name: "Credentials",
+      credentials: {
+        identifier: { label: "Username or Email", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const identifier = readCredentialValue(credentials?.identifier);
+        const password = readCredentialValue(credentials?.password);
+
+        if (!identifier || !password) {
+          return null;
+        }
+
+        const normalizedIdentifier = identifier.toLowerCase();
+        const user = await prisma.user.findFirst({
+          where: {
+            isActive: true,
+            OR: [
+              { emailLower: normalizedIdentifier },
+              { usernameLower: normalizedIdentifier },
+            ],
+          },
+          include: {
+            company: {
+              select: {
+                id: true,
+                companyCode: true,
+                companyName: true,
+              },
+            },
+          },
+        });
+
+        if (!user) {
+          return null;
+        }
+
+        const passwordMatches = await compare(password, user.passwordHash);
+        if (!passwordMatches) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          username: user.username,
+          role: normalizeRole(user.primaryRole),
+          roles: user.roles.map((role) => normalizeRole(role)),
+          companyId: user.companyId,
+          companyCode: user.company?.companyCode ?? null,
+          companyName: user.company?.companyName ?? null,
+        };
+      },
+    }),
+  ],
+  pages: {
+    signIn: "/login",
+  },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.username = user.username;
+        token.role = normalizeRole(user.role);
+        token.roles = (Array.isArray(user.roles) ? user.roles : []).map((role) =>
+          normalizeRole(role)
+        );
+        token.companyId = user.companyId ?? null;
+        token.companyCode = user.companyCode ?? null;
+        token.companyName = user.companyName ?? null;
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.sub ?? "";
+        session.user.username = typeof token.username === "string" ? token.username : "";
+        session.user.role = normalizeRole(
+          typeof token.role === "string" ? token.role : undefined
+        );
+        session.user.roles = Array.isArray(token.roles)
+          ? token.roles
+              .filter((role): role is string => typeof role === "string")
+              .map((role) => normalizeRole(role))
+          : [session.user.role];
+        session.user.companyId =
+          typeof token.companyId === "string" ? token.companyId : undefined;
+        session.user.companyCode =
+          typeof token.companyCode === "string" ? token.companyCode : undefined;
+        session.user.companyName =
+          typeof token.companyName === "string" ? token.companyName : undefined;
+      }
+
+      return session;
+    },
+  },
+} satisfies NextAuthConfig;

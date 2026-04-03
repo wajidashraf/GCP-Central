@@ -5,7 +5,7 @@ import AppFooter from './footer';
 
 type AppShellProps = {
   children: ReactNode;
-  user: CurrentUser;
+  user: CurrentUser | null;
 };
 
 export default function AppShell({ children, user }: AppShellProps) {

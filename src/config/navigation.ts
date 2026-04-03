@@ -10,7 +10,16 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Dashboard',
     href: '/dashboard',
-    roles: ['requestor', 'verifier', 'reviewer', 'committee', 'admin'],
+    roles: [
+      'requestor',
+      'verifier',
+      'reviewer',
+      'working_gcpc',
+      'hoc',
+      'endorser',
+      'main_committee',
+      'admin',
+    ],
   },
   {
     label: 'Submit Request',
@@ -20,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Review Requests',
     href: '/requests',
-    roles: ['verifier', 'reviewer', 'admin'],
+    roles: ['verifier', 'reviewer', 'working_gcpc', 'hoc', 'endorser', 'main_committee', 'admin'],
   },
   {
     label: 'Admin',

@@ -49,7 +49,7 @@ export default function HomePage() {
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-[var(--text-muted)]">
-            A unified digital platform for end-to-end contract procurement review—structured,
+            A unified digital platform for end-to-end contract procurement review, structured,
             trackable, and compliant.
           </p>
 

@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { NAV_ITEMS } from '@/src/config/navigation';
-import type { CurrentUser } from '@/src/types/auth';
+import { USER_ROLE_LABELS, type CurrentUser } from '@/src/types/auth';
 
 type AppHeaderProps = {
-  user: CurrentUser;
+  user: CurrentUser | null;
 };
 
 function getUserInitials(name: string): string {
@@ -20,8 +21,11 @@ function getUserInitials(name: string): string {
 
 export default function AppHeader({ user }: AppHeaderProps) {
   const pathname = usePathname();
-  const visibleNavItems = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
-  const initials = getUserInitials(user.name);
+  const userRoleSet = user ? new Set(user.roles.length > 0 ? user.roles : [user.role]) : null;
+  const visibleNavItems = userRoleSet
+    ? NAV_ITEMS.filter((item) => item.roles.some((role) => userRoleSet.has(role)))
+    : [];
+  const initials = user ? getUserInitials(user.name) : '';
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-white/90 backdrop-blur">
@@ -59,13 +63,28 @@ export default function AppHeader({ user }: AppHeaderProps) {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
-          <div className="hidden text-right leading-tight sm:block">
-            <p className="text-sm font-medium text-[var(--text)]">{user.name}</p>
-            <p className="text-xs capitalize text-[var(--text-subtle)]">{user.role}</p>
-          </div>
-          <span className="avatar-chip" title={`${user.name} (${user.role})`}>
-            {initials}
-          </span>
+          {user ? (
+            <>
+              <div className="hidden text-right leading-tight sm:block">
+                <p className="text-sm font-medium text-[var(--text)]">{user.name}</p>
+                <p className="text-xs text-[var(--text-subtle)]">{USER_ROLE_LABELS[user.role]}</p>
+              </div>
+              <span className="avatar-chip" title={`${user.name} (${USER_ROLE_LABELS[user.role]})`}>
+                {initials}
+              </span>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => signOut({ callbackUrl: '/login' })}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link href="/login" className="btn btn--primary btn--sm">
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
 

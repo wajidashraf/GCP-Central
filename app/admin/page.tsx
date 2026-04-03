@@ -3,8 +3,8 @@
 const ADMIN_SECTIONS = [
   {
     title: 'Role Management',
-    description: 'Assign and update user roles across requestor, verifier, reviewer, committee, and admin access.',
-    sprint: 'Sprint 3 · FR17',
+    description: 'Manage users, assign roles, and activate/deactivate accounts across all workflow groups.',
+    sprint: 'Live',
     href: '/admin/roles',
   },
   {

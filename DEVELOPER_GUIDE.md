@@ -1113,6 +1113,12 @@ Use this section to track what is live, what is in progress, and what is pending
 | Auth structure stubs | `src/lib/auth/auth.config.ts` | FR17 |
 | Button UI component | `src/components/ui/button.tsx` | — |
 | MongoDB seed (companies) | `prisma/seed.mjs` | — |
+| Config-driven form renderer | `src/components/forms/config-driven-fields.tsx` | FR1, FR3 |
+| GCPC/RTP multi-step request workflow (base request, details, docs, submit) | `app/submit/[channel]/[code]/_components/rtp-multi-step-form.tsx`, `app/submit/[channel]/[code]/_config/rtp-form-schema.ts`, `app/submit/[channel]/[code]/_actions/rtp.ts`, `lib/validations/rtp.ts` | FR1, FR3 |
+| GCPC/PBL multi-step request workflow (project selection, bidders list, docs, submit) | `app/submit/[channel]/[code]/_components/pbl-multi-step-form.tsx`, `app/submit/[channel]/[code]/_config/pbl-form-schema.ts`, `app/submit/[channel]/[code]/_actions/pbl.ts`, `lib/validations/pbl.ts` | FR1, FR3 |
+| Reusable uploaded document preview UI (file icon + view action) | `src/components/forms/uploaded-document-preview.tsx` | FR2 |
+| Submit form route support for RTP/PBL and submit-to-review navigation | `app/submit/[channel]/[code]/page.tsx` | FR1, FR3 |
+| PBL persistence models (PblRequest, PblBidder) + projectCode support | `prisma/schema.prisma` | FR1, FR3 |
 
 ### 🚧 Stubs (structure exists, logic pending)
 
@@ -1120,7 +1126,7 @@ Use this section to track what is live, what is in progress, and what is pending
 |---|---|---|---|
 | NextAuth authentication | `src/lib/auth/auth.config.ts`, `app/api/auth/[...nextauth]/route.ts` | Pre-Sprint 1 | FR17 |
 | Login page | `app/login/page.tsx` | Pre-Sprint 1 | — |
-| Submit Request page | `app/submit/page.tsx` | Sprint 1 | FR1, FR3 |
+| Submit Request catalog and routing (remaining forms pending) | `app/submit/page.tsx`, `app/submit/[channel]/[code]/page.tsx` | Sprint 1 | FR1, FR3 |
 | Review Requests page | `app/requests/page.tsx` | Sprint 1 | FR4, FR5 |
 | Dashboard page | `app/dashboard/page.tsx` | Sprint 3 | FR18 |
 | Admin page | `app/admin/page.tsx` | Sprint 3 | FR17, FR19 |
@@ -1129,7 +1135,7 @@ Use this section to track what is live, what is in progress, and what is pending
 
 | Feature | Sprint | BRD Reference |
 |---|---|---|
-| 13 request form pages (GCPC: RTP, PBL, JVP, ST/SP, CAA, PCCA, PP, VAP, Others; GCP: R-PCCA, CI, CPR, Others) | Sprint 1 | FR1, FR3 |
+| 11 remaining request form pages (GCPC: JVP, ST/SP, CAA, PCCA, PP, VAP, Others; GCP: R-PCCA, CI, CPR, Others) | Sprint 1 | FR1, FR3 |
 | Verifier review + rework flow | Sprint 1 | FR4 |
 | GCP/GCPC routing logic | Sprint 1 | FR5 |
 | Engagement session scheduling | Sprint 1 | FR6, FR10 |
@@ -1143,6 +1149,142 @@ Use this section to track what is live, what is in progress, and what is pending
 | Dashboard visualisations | Sprint 3 | FR18 |
 | SLA configuration panel | Sprint 3 | FR19 |
 | PDF/Excel export | Sprint 3 | FR20 |
+
+---
+
+## 19. RTP & PBL Implementation Details
+
+This section documents the implemented end-to-end behavior for RTP and PBL forms.
+Use it as the primary reference before adding new forms (JVP, CAA, etc.) so they follow the same architecture and quality standards.
+
+### 19.1 Shared Architecture (Both Forms)
+
+Both forms use the same overall pattern:
+
+1. **Dynamic route entry**
+   - `app/submit/[channel]/[code]/page.tsx`
+   - Resolves form by channel/code and renders the correct form component.
+2. **Client multi-step form**
+   - RTP: `app/submit/[channel]/[code]/_components/rtp-multi-step-form.tsx`
+   - PBL: `app/submit/[channel]/[code]/_components/pbl-multi-step-form.tsx`
+3. **Config-driven field schema**
+   - RTP: `app/submit/[channel]/[code]/_config/rtp-form-schema.ts`
+   - PBL: `app/submit/[channel]/[code]/_config/pbl-form-schema.ts`
+   - Shared renderer: `src/components/forms/config-driven-fields.tsx`
+4. **Server actions**
+   - RTP actions: `app/submit/[channel]/[code]/_actions/rtp.ts`
+   - PBL actions: `app/submit/[channel]/[code]/_actions/pbl.ts`
+5. **Zod validation layer**
+   - RTP schemas: `lib/validations/rtp.ts`
+   - PBL schemas: `lib/validations/pbl.ts`
+6. **Shared upload + preview**
+   - Upload API: `app/api/uploads/cloudinary/route.ts`
+   - Reusable uploaded file card: `src/components/forms/uploaded-document-preview.tsx`
+7. **Stepper UI**
+   - `src/components/forms/multi-step-stepper.tsx`
+
+### 19.2 RTP Implementation (GCPC / RTP)
+
+**Route condition**
+- Implemented when:
+  - `channel = gcpc`
+  - `code = RTP`
+
+**Step flow**
+1. **Basic Information**
+   - Request title, category, requestor, and company are pre-filled and locked.
+   - Action: `createRtpBaseRequest()`
+   - Persists base `Request` with status `Draft`.
+2. **Project Details**
+   - Captures client name, registration type, tender date (conditional), project name, description.
+   - Action: `saveRtpDetails()`
+   - Upserts `RtpRequest`, creates/updates `Project`, updates request status to `Draft-Details`.
+3. **Documents & Submit**
+   - Upload required document.
+   - Must check acknowledgement before submit.
+   - Action: `submitRtpRequest()`
+   - Updates `RtpRequest` document metadata and marks parent request as `New` + `submittedAt`.
+
+**Key RTP validation rules**
+- `requestType` must be `RTP`.
+- `category` must match selected routing/channel.
+- `tenderClosingDate` is required when registration type = Tender List.
+- File type restricted to allowed office/image/pdf MIME types.
+- File size max = 10MB.
+- Acknowledgement is mandatory for final submission.
+
+### 19.3 PBL Implementation (GCPC / PBL)
+
+**Route condition**
+- Implemented when:
+  - `channel = gcpc`
+  - `code = PBL`
+
+**Step flow**
+1. **Basic Information**
+   - Request title, category, requestor are pre-filled and locked.
+   - Action: `createPblBaseRequest()`
+   - Persists base `Request` with status `Draft`.
+2. **Project Details**
+   - User selects project from DB (restricted to requestor company).
+   - Project code auto-populates and is locked.
+   - Company is locked.
+   - Procurement method is required.
+   - Action: `savePblDetails()`
+   - Upserts `PblRequest`, updates request status to `Draft-Details`.
+3. **Bidders List**
+   - User can add multiple bidder records.
+   - One PBL request maps to many bidder rows.
+   - Conditional rule:
+     - if bidder count `< 3` → justification required
+     - if bidder count `>= 3` → justification hidden/optional
+   - Action: `savePblBidders()`
+   - Replaces persisted bidder rows in `PblBidder` for current request and updates status to `Draft-Bidders`.
+4. **Documents & Submit**
+   - Upload required document and check acknowledgement.
+   - Action: `submitPblRequest()`
+   - Validates bidder completeness again, stores final document metadata, marks request `New` + `submittedAt`.
+
+**Key PBL validation rules**
+- `requestType` must be `PBL`.
+- Project must belong to the same company as the base request.
+- Procurement method must be valid enum (`Selective Tendering` / `Direct Negotiation`).
+- At least one bidder required.
+- Justification required when bidders are fewer than 3.
+- File type + file size constraints follow shared upload policy (same as RTP).
+- Acknowledgement is mandatory for final submission.
+
+### 19.4 Data Model Used by RTP & PBL
+
+**Shared parent model**
+- `Request` (request metadata, lifecycle status, acknowledgement, submitted timestamp).
+
+**RTP-specific**
+- `RtpRequest` (details, optional special project flag, document metadata).
+- `Project` relation used for project linkage.
+
+**PBL-specific**
+- `PblRequest` (project/procurement details, justification, document metadata).
+- `PblBidder` (one-to-many bidder records linked to PBL request).
+- `Project.projectCode` used to auto-populate locked Project Code in Step 2.
+
+### 19.5 Submission Outcome & Navigation
+
+For both RTP and PBL:
+- On successful final submit:
+  - request status is set to `New`
+  - `submittedAt` is set
+  - request list cache is revalidated
+  - user is redirected to review requests page: `/requests`
+
+### 19.6 Reuse Guidance for Upcoming Forms
+
+When building the remaining forms:
+- Keep the same folder pattern under `app/submit/[channel]/[code]/`.
+- Use config-driven fields for maintainability and consistency.
+- Keep client and server Zod validation aligned.
+- Reuse shared document upload + preview component instead of duplicating upload UI.
+- Preserve status progression pattern (`Draft` → intermediate draft status → `New` on submit).
 
 ---
 

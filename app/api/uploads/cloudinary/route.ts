@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { deleteFromCloudinary, uploadToCloudinary } from "@/lib/cloudinary";
 import {
   RTP_ALLOWED_DOCUMENT_MIME_TYPES,
   RTP_MAX_DOCUMENT_SIZE_BYTES,
@@ -70,5 +70,25 @@ export async function POST(req: Request) {
     );
   } catch {
     return NextResponse.json({ message: "Failed to upload document." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const body = (await req.json()) as { publicId?: string } | null;
+    const publicId = body?.publicId?.trim() ?? "";
+
+    if (!publicId) {
+      return NextResponse.json({ message: "publicId is required." }, { status: 400 });
+    }
+
+    const deletedFile = await deleteFromCloudinary(publicId);
+    if (!deletedFile.success) {
+      return NextResponse.json({ message: "Failed to delete uploaded file." }, { status: 502 });
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch {
+    return NextResponse.json({ message: "Failed to delete uploaded file." }, { status: 500 });
   }
 }

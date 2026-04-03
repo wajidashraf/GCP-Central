@@ -18,7 +18,7 @@ export interface CloudinaryUploadResult {
 
 /**
  * Uploads a file (base64 or remote URL) to Cloudinary.
- * 
+ *
  * @param fileUri - The file URI or Base64 string to upload
  * @param folder - The target folder in Cloudinary (defaults to 'gcp-central')
  * @returns The upload result or error
@@ -32,9 +32,9 @@ export async function uploadToCloudinary(
       folder,
       resource_type: "auto",
     });
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       result: {
         public_id: result.public_id,
         secure_url: result.secure_url,
@@ -42,7 +42,7 @@ export async function uploadToCloudinary(
         width: result.width,
         height: result.height,
         bytes: result.bytes,
-      } 
+      },
     };
   } catch (error) {
     console.error("Cloudinary upload error:", error);
@@ -51,21 +51,34 @@ export async function uploadToCloudinary(
 }
 
 /**
- * Deletes an image from Cloudinary by its public ID.
- * 
+ * Deletes a resource from Cloudinary by its public ID.
+ * Tries image/raw/video resource types so files uploaded with `resource_type: auto` can be deleted reliably.
+ *
  * @param publicId - The public ID of the resource to delete
  * @returns Success status and optional error
  */
 export async function deleteFromCloudinary(
   publicId: string
 ): Promise<{ success: boolean; error?: unknown }> {
-  try {
-    await cloudinary.uploader.destroy(publicId);
-    return { success: true };
-  } catch (error) {
-    console.error("Cloudinary delete error:", error);
-    return { success: false, error };
+  const resourceTypes: Array<"image" | "raw" | "video"> = ["image", "raw", "video"];
+  let lastError: unknown = null;
+
+  for (const resourceType of resourceTypes) {
+    try {
+      const result = await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+      if (result.result === "ok" || result.result === "not found") {
+        return { success: true };
+      }
+    } catch (error) {
+      lastError = error;
+    }
   }
+
+  if (lastError) {
+    console.error("Cloudinary delete error:", lastError);
+  }
+
+  return { success: false, error: lastError };
 }
 
 export default cloudinary;
