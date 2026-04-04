@@ -1,12 +1,10 @@
 'use client';
 
 import { type FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Button from '@/src/components/ui/button';
 
 export default function LoginForm() {
-  const router = useRouter();
   const callbackUrl = '/';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,13 +32,13 @@ export default function LoginForm() {
         redirect: false,
       });
 
-      if (!result || result.error) {
+      if (result?.error) {
         setErrorMessage('Invalid username/email or password.');
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      // Hard redirect so the server-rendered layout re-reads the session cookie
+      window.location.href = callbackUrl;
     } catch {
       setErrorMessage('Unable to sign in right now. Please try again.');
     } finally {
