@@ -29,9 +29,10 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
 
   if (isImplementedForm) {
     const user = await getCurrentUser();
-    if (!user) {
-      redirect('/login');
-    }
+    // Auth disabled - allow access without login
+    // if (!user) {
+    //   redirect('/login');
+    // }
 
     const preferredCompany = user.companyCode
       ? await prisma.company.findUnique({

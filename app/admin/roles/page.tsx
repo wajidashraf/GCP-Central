@@ -47,9 +47,10 @@ const ROLE_BADGE_CLASSNAME: Record<UserRole, string> = {
 export default async function AdminRolesPage() {
   const currentUser = await getCurrentUser();
 
-  if (!currentUser) {
-    redirect('/login');
-  }
+  // Auth disabled - show page without requiring login
+  // if (!currentUser) {
+  //   redirect('/login');
+  // }
 
   if (!currentUser.roles.includes('admin')) {
     return (
