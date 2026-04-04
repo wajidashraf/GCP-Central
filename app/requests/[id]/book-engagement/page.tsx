@@ -12,10 +12,6 @@ interface Slot {
   attendees: string[];
 }
 
-interface SelectedSlot extends Slot {
-  reviewerCount: number;
-}
-
 export default function BookEngagementPage() {
   const router = useRouter();
   const params = useParams();

@@ -65,6 +65,10 @@ model Request {
   status          String    @default("Draft")
   acknowledgement Boolean   @default(false)
   submittedAt     DateTime?
+  verifierCommentText String?
+  verifierDecisionCode String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -235,6 +239,7 @@ model ReviewerSuggestion {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   requestId String   @db.ObjectId
   reviewerId String  @db.ObjectId
+  reviewerName String?
   suggestion String
   status    String   @default("pending")
   action    String?

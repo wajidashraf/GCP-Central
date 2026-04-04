@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
+
+const SUGGESTION_ACTIONS = ['accepted', 'no_need', 'pending'] as const;
 
 export async function POST(
   request: NextRequest,
@@ -9,7 +12,7 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     
-    if (!user || user.role !== 'reviewer') {
+    if (!user || !hasRole(user, 'reviewer')) {
       return NextResponse.json(
         { error: 'Only reviewers can submit suggestions' },
         { status: 403 }
@@ -18,9 +21,10 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { suggestion, action } = body;
+    const { suggestion } = body;
+    const normalizedSuggestion = typeof suggestion === 'string' ? suggestion.trim() : '';
 
-    if (!suggestion) {
+    if (!normalizedSuggestion) {
       return NextResponse.json(
         { error: 'Suggestion is required' },
         { status: 400 }
@@ -44,9 +48,10 @@ export async function POST(
       data: {
         requestId: id,
         reviewerId: user.id,
-        suggestion,
+        reviewerName: user.name,
+        suggestion: normalizedSuggestion,
         status: 'pending',
-        action: action || null,
+        action: null,
       },
     });
 
@@ -89,19 +94,54 @@ export async function PATCH(
   try {
     const user = await getCurrentUser();
     
-    if (!user || (user.role !== 'verifier' && user.role !== 'admin')) {
+    if (!user || (!hasRole(user, 'verifier') && !hasRole(user, 'admin'))) {
       return NextResponse.json(
         { error: 'Only verifiers and admins can update suggestion status' },
         { status: 403 }
       );
     }
+    const { id } = await params;
 
     const body = await request.json();
     const { suggestionId, action } = body;
+    const normalizedSuggestionId = typeof suggestionId === 'string' ? suggestionId.trim() : '';
+    const normalizedAction = typeof action === 'string' ? action.trim().toLowerCase() : '';
+
+    if (!normalizedSuggestionId || !normalizedAction) {
+      return NextResponse.json(
+        { error: 'Suggestion ID and action are required' },
+        { status: 400 }
+      );
+    }
+
+    if (!SUGGESTION_ACTIONS.includes(normalizedAction as (typeof SUGGESTION_ACTIONS)[number])) {
+      return NextResponse.json(
+        { error: 'Invalid action value' },
+        { status: 400 }
+      );
+    }
+
+    const suggestion = await prisma.reviewerSuggestion.findFirst({
+      where: {
+        id: normalizedSuggestionId,
+        requestId: id,
+      },
+      select: { id: true },
+    });
+
+    if (!suggestion) {
+      return NextResponse.json(
+        { error: 'Suggestion not found for this request' },
+        { status: 404 }
+      );
+    }
 
     const updatedSuggestion = await prisma.reviewerSuggestion.update({
-      where: { id: suggestionId },
-      data: { action },
+      where: { id: normalizedSuggestionId },
+      data: {
+        action: normalizedAction,
+        status: normalizedAction === 'pending' ? 'pending' : 'reviewed',
+      },
     });
 
     return NextResponse.json(updatedSuggestion);

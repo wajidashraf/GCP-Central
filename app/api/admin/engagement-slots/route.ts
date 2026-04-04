@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 export async function GET() {
   try {
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     
-    if (!user || user.role !== 'admin') {
+    if (!user || !hasRole(user, 'admin')) {
       return NextResponse.json(
         { error: 'Only admins can create slots' },
         { status: 403 }
@@ -45,6 +46,13 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(attendees) && attendeeIds.length !== attendees.length) {
       return NextResponse.json(
         { error: 'Attendees must be an array of user IDs' },
+        { status: 400 }
+      );
+    }
+
+    if (attendeeIds.length < 1) {
+      return NextResponse.json(
+        { error: 'At least one reviewer attendee is required' },
         { status: 400 }
       );
     }

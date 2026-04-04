@@ -64,6 +64,11 @@ export default function EngagementSlotsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.attendees.length < 1) {
+      alert('Please select at least one reviewer attendee');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -119,7 +124,9 @@ export default function EngagementSlotsPage() {
       </header>
 
       <section className="surface-card p-5">
-        {slots.length > 0 ? (
+        {isLoading ? (
+          <p className="text-center text-[var(--text-muted)]">Loading slots...</p>
+        ) : slots.length > 0 ? (
           <div className="table-shell">
             <table>
               <thead>

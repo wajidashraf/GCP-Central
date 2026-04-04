@@ -8,6 +8,12 @@ const ADMIN_SECTIONS = [
     href: '/admin/roles',
   },
   {
+    title: 'Engagement Slots',
+    description: 'Create meeting slots and assign one or more reviewer attendees for request engagements.',
+    sprint: 'Live',
+    href: '/admin/engagement-slots',
+  },
+  {
     title: 'SLA Configuration',
     description: 'Configure threshold timing by workflow stage and define breach conditions.',
     sprint: 'Sprint 3 · FR19',

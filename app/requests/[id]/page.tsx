@@ -155,8 +155,8 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
     });
   }
 
-  const normalizedStatus = request.status.trim().toLowerCase();
   const hasEngagementSlots = (await prisma.engagementSlot.count()) > 0;
+  const hasBookedEngagement = request.engagements.length > 0;
 
   // Convert dates to serializable format
   const verifierCommentData = request.verifierComment ? {
@@ -358,18 +358,20 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             </div>
           ) : null}
 
-          <div>
-            <SectionTitle title="Actions" />
-            <RequestActionsSection
-              requestId={request.id}
-              status={request.status}
-              userRole={currentUser?.role}
-              verifierComment={verifierCommentData}
-              reviewerSuggestions={reviewerSuggestionsData}
-              hasEngagementSlots={hasEngagementSlots}
-            />
-          </div>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <RequestActionsSection
+          requestId={request.id}
+          status={request.status}
+          userRole={currentUser?.role}
+          userRoles={currentUser?.roles}
+          verifierComment={verifierCommentData}
+          reviewerSuggestions={reviewerSuggestionsData}
+          hasEngagementSlots={hasEngagementSlots}
+          hasBookedEngagement={hasBookedEngagement}
+        />
       </section>
     </div>
   );

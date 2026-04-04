@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 export async function POST(
   request: NextRequest,
@@ -9,7 +10,7 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     
-    if (!user || user.role !== 'requestor') {
+    if (!user || !hasRole(user, 'requestor')) {
       return NextResponse.json(
         { error: 'Only requestors can book engagements' },
         { status: 403 }
@@ -36,6 +37,13 @@ export async function POST(
       return NextResponse.json(
         { error: 'Request not found' },
         { status: 404 }
+      );
+    }
+
+    if (requestRecord.requestorId !== user.id) {
+      return NextResponse.json(
+        { error: 'You can only book engagements for your own requests' },
+        { status: 403 }
       );
     }
 

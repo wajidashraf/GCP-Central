@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Button from '@/src/components/ui/button';
 
 interface VerifierCommentType {
   id: string;
@@ -13,6 +12,7 @@ interface VerifierCommentType {
 
 interface ReviewerSuggestionType {
   id: string;
+  reviewerName?: string | null;
   suggestion: string;
   action?: string | null;
   createdAt: string | Date;
@@ -22,6 +22,7 @@ interface GeneralReviewSectionProps {
   verifierComment?: VerifierCommentType | null;
   reviewerSuggestions?: ReviewerSuggestionType[];
   userRole?: string;
+  userRoles?: string[];
   onUpdateSuggestion?: (suggestionId: string, action: string) => Promise<void>;
 }
 
@@ -35,12 +36,20 @@ export default function GeneralReviewSection({
   verifierComment,
   reviewerSuggestions = [],
   userRole,
+  userRoles = [],
   onUpdateSuggestion,
 }: GeneralReviewSectionProps) {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const canManageSuggestions = ['verifier', 'admin'].includes(userRole || '');
+  const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
+  const canManageSuggestions = roleSet.has('verifier') || roleSet.has('admin');
+
+  const getActionLabel = (value?: string | null) => {
+    if (!value) return 'Select Action';
+    if (value === 'no_need') return 'No Need';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
 
   const handleActionSelect = async (suggestionId: string, action: string) => {
     if (!onUpdateSuggestion) return;
@@ -91,12 +100,14 @@ export default function GeneralReviewSection({
         {/* Reviewer Suggestions Section */}
         {reviewerSuggestions.length > 0 && (
           <div>
-            <h4 className="mb-3 text-sm font-semibold text-[var(--text)]">Reviewer Comments</h4>
+            <h4 className="mb-3 text-sm font-semibold text-[var(--text)]">Reviewer Notifications</h4>
             <div className="space-y-3">
               {reviewerSuggestions.map((suggestion) => (
                 <div key={suggestion.id} className="rounded-lg bg-gray-50 p-4">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-900">Reviewer Suggestion</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      Reviewer Suggestion {suggestion.reviewerName ? `· ${suggestion.reviewerName}` : ''}
+                    </span>
                     <span className="text-xs text-gray-600">
                       {new Date(suggestion.createdAt).toLocaleDateString()}
                     </span>
@@ -111,7 +122,7 @@ export default function GeneralReviewSection({
                         disabled={updating === suggestion.id}
                         className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-gray-50 disabled:opacity-50"
                       >
-                        {suggestion.action || 'Select Action'}
+                        {getActionLabel(suggestion.action)}
                         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                         </svg>
@@ -135,7 +146,7 @@ export default function GeneralReviewSection({
                   )}
                   {!canManageSuggestions && suggestion.action && (
                     <span className="inline-block rounded px-2 py-1 text-xs font-semibold bg-gray-200 text-gray-700">
-                      {suggestion.action}
+                      {getActionLabel(suggestion.action)}
                     </span>
                   )}
                 </div>

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 export async function GET() {
   try {
     const user = await getCurrentUser();
     
-    if (!user || user.role !== 'admin') {
+    if (!user || !hasRole(user, 'admin')) {
       return NextResponse.json(
         { error: 'Only admins can view reviewers' },
         { status: 403 }

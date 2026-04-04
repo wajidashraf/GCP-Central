@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
+
+const ALLOWED_DECISION_CODES = ['approved', 'rejected', 'resubmit'] as const;
+
+function normalizeDecisionCode(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!ALLOWED_DECISION_CODES.includes(normalized as (typeof ALLOWED_DECISION_CODES)[number])) {
+    return null;
+  }
+
+  return normalized as (typeof ALLOWED_DECISION_CODES)[number];
+}
 
 export async function POST(
   request: NextRequest,
@@ -9,7 +25,7 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     
-    if (!user || user.role !== 'verifier') {
+    if (!user || !hasRole(user, 'verifier')) {
       return NextResponse.json(
         { error: 'Only verifiers can submit verification comments' },
         { status: 403 }
@@ -19,8 +35,10 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const { comment, decisionCode } = body;
+    const normalizedComment = typeof comment === 'string' ? comment.trim() : '';
+    const normalizedDecisionCode = normalizeDecisionCode(decisionCode);
 
-    if (!comment || !decisionCode) {
+    if (!normalizedComment || !normalizedDecisionCode) {
       return NextResponse.json(
         { error: 'Comment and decision code are required' },
         { status: 400 }
@@ -43,15 +61,15 @@ export async function POST(
     const verifierComment = await prisma.verifierComment.upsert({
       where: { requestId: id },
       update: {
-        comment,
-        decisionCode,
+        comment: normalizedComment,
+        decisionCode: normalizedDecisionCode,
         verifiedBy: user.name,
       },
       create: {
         requestId: id,
         verifierId: user.id,
-        comment,
-        decisionCode,
+        comment: normalizedComment,
+        decisionCode: normalizedDecisionCode,
         verifiedBy: user.name,
       },
     });
@@ -60,7 +78,11 @@ export async function POST(
     await prisma.request.update({
       where: { id },
       data: {
-        status: decisionCode === 'approved' ? 'Acknowledged' : 'Resubmit',
+        status: normalizedDecisionCode === 'approved' ? 'Acknowledged' : 'Resubmit',
+        verifierCommentText: normalizedComment,
+        verifierDecisionCode: normalizedDecisionCode,
+        verifiedBy: user.name,
+        verifiedAt: new Date(),
       },
     });
 
