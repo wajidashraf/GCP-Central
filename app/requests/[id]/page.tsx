@@ -184,19 +184,20 @@ function DocumentCard({ doc }: { doc: DocumentItem }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`Download ${displayName}`}
-      className="group flex min-w-[100px] cursor-pointer flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-2 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
+      className="group flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-2.5 no-underline transition-all duration-150 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
     >
-      {iconMap[fileType]}
+      {/* Left: icon (50% of original h-16 w-16) + badge stacked */}
+      <div className="flex shrink-0 flex-col items-center gap-1">
+        <span className="[&>svg]:h-8 [&>svg]:w-8">{iconMap[fileType]}</span>
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${FILE_BADGE_STYLES[fileType]}`}
+        >
+          {FILE_BADGE_LABEL[fileType]}
+        </span>
+      </div>
 
-      {/* File type badge */}
-      <span
-        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${FILE_BADGE_STYLES[fileType]}`}
-      >
-        {FILE_BADGE_LABEL[fileType]}
-      </span>
-
-      {/* File name */}
-      <span className="max-w-[120px] break-words text-center text-xs font-medium text-[var(--text)] transition-colors group-hover:text-[var(--brand-600)]">
+      {/* Right: filename */}
+      <span className="max-w-[140px] break-words text-xs font-medium leading-snug text-[var(--text)] transition-colors group-hover:text-[var(--brand-600)]">
         {displayName}
       </span>
     </a>
@@ -205,6 +206,8 @@ function DocumentCard({ doc }: { doc: DocumentItem }) {
 
 // ─── Documents Section ────────────────────────────────────────────────────────
 
+const MAX_VISIBLE_DOCS = 2;
+
 function DocumentCards({ documents }: { documents: DocumentItem[] }) {
   if (documents.length === 0) {
     return (
@@ -212,11 +215,19 @@ function DocumentCards({ documents }: { documents: DocumentItem[] }) {
     );
   }
 
+  const visible  = documents.slice(0, MAX_VISIBLE_DOCS);
+  const overflow = documents.length - MAX_VISIBLE_DOCS;
+
   return (
-    <div className="flex flex-wrap gap-4 mt-2">
-      {documents.map((doc) => (
+    <div className="mt-2 flex flex-wrap items-center gap-3">
+      {visible.map((doc) => (
         <DocumentCard key={`${doc.label}-${doc.url}`} doc={doc} />
       ))}
+      {overflow > 0 && (
+        <span className="text-sm font-medium text-[var(--text-muted)]">
+          +{overflow} More
+        </span>
+      )}
     </div>
   );
 }
@@ -233,9 +244,9 @@ function SectionTitle({ title }: { title: string }) {
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="mt-2">
+    <div className="rounded-lg border border-[var(--border)] bg-white p-3">
       <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</dt>
-      <dd className="rounded-lg border border-[var(--border)] bg-white p-3 mt-1 text-sm text-[var(--text)]">{value ?? '—'}</dd>
+      <dd className="mt-1 text-sm text-[var(--text)]">{value ?? '—'}</dd>
     </div>
   );
 }
@@ -386,7 +397,9 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           {/* ── Documents ── */}
           <div>
             <SectionTitle title="Documents" />
+            <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
               <DocumentCards documents={documents} />
+            </div>
           </div>
 
           {/* ── General Information ── */}
@@ -419,11 +432,11 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                 <DetailItem label="Tender Closing Date" value={formatDateTime(request.rtp.tenderClosingDate)} />
                 <DetailItem label="Special Project"    value={request.rtp.specialProject ? 'Yes' : 'No'} />
               </dl>
-              <div className="mt-2">
+              <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Project Description
                 </p>
-                <p className="rounded-lg border border-[var(--border)] bg-white p-3 mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
+                <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
                   {request.rtp.projectDescription}
                 </p>
               </div>
