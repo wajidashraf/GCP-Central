@@ -1,7 +1,13 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 
 const PUBLIC_PATHS = new Set(["/", "/login"]);
+const AUTH_SESSION_COOKIE_NAMES = [
+  "__Secure-authjs.session-token",
+  "authjs.session-token",
+  "__Secure-next-auth.session-token",
+  "next-auth.session-token",
+];
 
 function normalizeCallbackPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -11,9 +17,16 @@ function normalizeCallbackPath(value: string | null) {
   return value;
 }
 
-export const proxy = auth((request) => {
+function hasSessionCookie(request: NextRequest) {
+  return AUTH_SESSION_COOKIE_NAMES.some((cookieName) => {
+    const token = request.cookies.get(cookieName)?.value;
+    return Boolean(token);
+  });
+}
+
+export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const isAuthenticated = Boolean(request.auth);
+  const isAuthenticated = hasSessionCookie(request);
   const isPublicPath = PUBLIC_PATHS.has(pathname);
 
   if (isPublicPath) {
@@ -34,7 +47,7 @@ export const proxy = auth((request) => {
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
