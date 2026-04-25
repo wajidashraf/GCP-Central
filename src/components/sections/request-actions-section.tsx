@@ -124,8 +124,7 @@ export default function RequestActionsSection({
       />
      
       <div className="rounded-lg border border-[var(--border)] bg-white p-5">
-      
-        <h3 className="mb-4 text-lg font-semibold text-[var(--text)]">Actions</h3>
+    
         <div className="flex flex-wrap gap-2">
           {canVerify && (
             <Button
