@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SectionTitle } from './request-form-shared';
 
 interface VerifierCommentType {
   id: string;
@@ -68,10 +69,11 @@ export default function GeneralReviewSection({
   }
 
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-white p-5">
-      <h3 className="mb-4 text-lg font-semibold text-[var(--text)]">General Review</h3>
+    <div>
+      <SectionTitle title="General Review" />
       
-      <div className="space-y-5">
+      <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
+        <div className="space-y-5">
         {/* Verifier Comment Section */}
         {verifierComment && (
           <div className="rounded-lg bg-blue-50 p-4">
@@ -153,8 +155,7 @@ export default function GeneralReviewSection({
               ))}
             </div>
           </div>
-        )}
-      </div>
+        )}        </div>      </div>
     </div>
   );
 }

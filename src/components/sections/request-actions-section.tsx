@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Button from '@/src/components/ui/button';
 import VerifyModal from '@/src/components/modals/verify-modal';
 import ReviewModal from '@/src/components/modals/review-modal';
-import GeneralReviewSection from '@/src/components/sections/general-review-section';
 import { useRouter } from 'next/navigation';
 
 interface RequestActionsSectionProps {
@@ -12,20 +11,6 @@ interface RequestActionsSectionProps {
   status: string;
   userRole?: string;
   userRoles?: string[];
-  verifierComment?: {
-    id: string;
-    comment: string;
-    decisionCode: string;
-    verifiedBy: string;
-    createdAt: string | Date;
-  } | null;
-  reviewerSuggestions?: Array<{
-    id: string;
-    reviewerName?: string | null;
-    suggestion: string;
-    action?: string | null;
-    createdAt: string | Date;
-  }>;
   hasEngagementSlots?: boolean;
   hasBookedEngagement?: boolean;
 }
@@ -35,8 +20,6 @@ export default function RequestActionsSection({
   status,
   userRole,
   userRoles = [],
-  verifierComment,
-  reviewerSuggestions = [],
   hasEngagementSlots,
   hasBookedEngagement = false,
 }: RequestActionsSectionProps) {
@@ -48,13 +31,12 @@ export default function RequestActionsSection({
   const normalizedStatus = status.trim().toLowerCase();
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
   const hasRole = (role: string) => roleSet.has(role);
-  const isVerifiedApproved = verifierComment?.decisionCode?.toString().toLowerCase() === 'approved';
-  const canVerify = hasRole('verifier') && ['new', 'submitted', 'under verification', 'pending review', 'in review'].includes(normalizedStatus) && !verifierComment;
+  const canVerify = hasRole('verifier') && ['new', 'submitted', 'under verification', 'pending review', 'in review'].includes(normalizedStatus);
   const canReview = hasRole('reviewer') && ['in review', 'pending review', 'draft review', 'scheduled'].includes(normalizedStatus);
   const canBookEngagement = hasRole('requestor')
     && hasEngagementSlots
     && !hasBookedEngagement
-    && (isVerifiedApproved || ['new', 'ready for engagement', 'acknowledged', 'scheduled', 'in review'].includes(normalizedStatus));
+    && ['new', 'ready for engagement', 'acknowledged', 'scheduled', 'in review'].includes(normalizedStatus);
 
   const handleVerifySubmit = async (data: { comment: string; decisionCode: string }) => {
     setIsSubmitting(true);
@@ -96,35 +78,9 @@ export default function RequestActionsSection({
     }
   };
 
-  const handleUpdateSuggestion = async (suggestionId: string, action: string) => {
-    try {
-      const response = await fetch(`/api/requests/${requestId}/reviewer-suggestion`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ suggestionId, action }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || 'Failed to update suggestion');
-      
-      router.refresh();
-    } catch (error) {
-      throw error;
-    }
-  };
-
   return (
     <>
-       {/* General Review Section */}
-      <GeneralReviewSection
-        verifierComment={verifierComment}
-        reviewerSuggestions={reviewerSuggestions}
-        userRole={userRole}
-        userRoles={userRoles}
-        onUpdateSuggestion={handleUpdateSuggestion}
-      />
-     
       <div className="rounded-lg border border-[var(--border)] bg-white p-5">
-    
         <div className="flex flex-wrap gap-2">
           {canVerify && (
             <Button
@@ -156,12 +112,7 @@ export default function RequestActionsSection({
             </Button>
           )}
         </div>
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
-          Actions are displayed based on your role and request status.
-        </p>
       </div>
-
-      
 
       {/* Modals */}
       <VerifyModal

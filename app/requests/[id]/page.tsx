@@ -1,257 +1,19 @@
-import type { ReactNode } from 'react';
 import Button from '@/src/components/ui/button';
 import RequestActionsSection from '@/src/components/sections/request-actions-section';
+import GeneralReviewSectionClient from '@/src/components/sections/general-review-section-client';
+import { DocumentCards, DocumentItem } from '@/src/components/sections/document-card';
+import {
+  SectionTitle,
+  DetailItem,
+  formatDateTime,
+  stringifyJson,
+  STATUS_BADGE_CLASS_MAP,
+} from '@/src/components/sections/request-form-shared';
 import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
-  Draft: 'badge--neutral',
-  'Draft-Details': 'badge--neutral',
-  New: 'badge--info',
-  'In Review': 'badge--warning',
-  Resubmit: 'badge--warning',
-  Acknowledged: 'badge--success',
-  Endorsed: 'badge--success',
-  'For Record': 'badge--neutral',
-  NC: 'badge--danger',
-};
-
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type DocumentItem = {
-  label: string;
-  url: string;
-  fileName?: string | null;
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDateTime(value: Date | null | undefined) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(value);
-}
-
-function stringifyJson(value: unknown) {
-  if (!value) return '—';
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-// ─── File Type Detection ──────────────────────────────────────────────────────
-
-type FileType = 'xlsx' | 'pdf' | 'docx' | 'image' | 'other';
-
-function getFileType(fileName?: string | null): FileType {
-  if (!fileName) return 'other';
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'xlsx';
-  if (ext === 'pdf') return 'pdf';
-  if (ext === 'docx' || ext === 'doc') return 'docx';
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext ?? '')) return 'image';
-  return 'other';
-}
-
-// ─── File Icons ───────────────────────────────────────────────────────────────
-
-function ExcelIcon() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-16 w-16">
-      <rect width="64" height="64" rx="10" fill="#E8F5E9" />
-      <rect x="8" y="8" width="48" height="48" rx="7" fill="#ffffff" stroke="#c8e6c9" strokeWidth="1.5" />
-      {/* Green sidebar */}
-      <rect x="8" y="8" width="22" height="48" rx="7" fill="#1D6F42" />
-      <rect x="18" y="8" width="12" height="48" fill="#1D6F42" />
-      <text x="12" y="36" fontSize="14" fontWeight="800" fill="white" fontFamily="sans-serif">X</text>
-      {/* Grid lines */}
-      <line x1="30" y1="22" x2="56" y2="22" stroke="#b2dfdb" strokeWidth="1.5" />
-      <line x1="30" y1="32" x2="56" y2="32" stroke="#b2dfdb" strokeWidth="1.5" />
-      <line x1="30" y1="42" x2="56" y2="42" stroke="#b2dfdb" strokeWidth="1.5" />
-      {/* Cells */}
-      <rect x="32" y="24" width="9" height="7" rx="1" fill="#c8e6c9" />
-      <rect x="44" y="24" width="9" height="7" rx="1" fill="#a5d6a7" />
-      <rect x="32" y="34" width="9" height="7" rx="1" fill="#a5d6a7" />
-      <rect x="44" y="34" width="9" height="7" rx="1" fill="#c8e6c9" />
-    </svg>
-  );
-}
-
-function PdfIcon() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-16 w-16">
-      <rect width="64" height="64" rx="10" fill="#FEE2E2" />
-      <rect x="8" y="8" width="48" height="48" rx="7" fill="#ffffff" stroke="#fecaca" strokeWidth="1.5" />
-      <path d="M16 14 H37 L50 27 V50 H16 Z" fill="#EF4444" />
-      <path d="M37 14 L37 27 L50 27 Z" fill="#B91C1C" />
-      <text x="20" y="43" fontSize="11" fontWeight="800" fill="white" fontFamily="sans-serif">PDF</text>
-    </svg>
-  );
-}
-
-function WordIcon() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-16 w-16">
-      <rect width="64" height="64" rx="10" fill="#DBEAFE" />
-      <rect x="8" y="8" width="48" height="48" rx="7" fill="#ffffff" stroke="#bfdbfe" strokeWidth="1.5" />
-      {/* Blue sidebar */}
-      <rect x="8" y="8" width="22" height="48" rx="7" fill="#1D4ED8" />
-      <rect x="18" y="8" width="12" height="48" fill="#1D4ED8" />
-      <text x="11" y="36" fontSize="13" fontWeight="800" fill="white" fontFamily="sans-serif">W</text>
-      {/* Document lines */}
-      <line x1="30" y1="22" x2="56" y2="22" stroke="#bfdbfe" strokeWidth="1.5" />
-      <line x1="30" y1="29" x2="56" y2="29" stroke="#bfdbfe" strokeWidth="1.5" />
-      <line x1="30" y1="36" x2="52" y2="36" stroke="#bfdbfe" strokeWidth="1.5" />
-      <line x1="30" y1="43" x2="50" y2="43" stroke="#bfdbfe" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function ImageIcon() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-16 w-16">
-      <rect width="64" height="64" rx="10" fill="#FDF4FF" />
-      <rect x="8" y="8" width="48" height="48" rx="7" fill="#ffffff" stroke="#e9d5ff" strokeWidth="1.5" />
-      <rect x="14" y="14" width="36" height="36" rx="4" fill="#A855F7" />
-      {/* Mountain scene */}
-      <path d="M14 38 L26 24 L34 32 L40 26 L50 38 Z" fill="#7C3AED" />
-      {/* Sun */}
-      <circle cx="42" cy="22" r="5" fill="#FDE68A" />
-    </svg>
-  );
-}
-
-function GenericFileIcon() {
-  return (
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-16 w-16">
-      <rect width="64" height="64" rx="10" fill="#F3F4F6" />
-      <rect x="8" y="8" width="48" height="48" rx="7" fill="#ffffff" stroke="#e5e7eb" strokeWidth="1.5" />
-      <path d="M18 14 H37 L46 23 V50 H18 Z" fill="#6B7280" />
-      <path d="M37 14 L37 23 L46 23 Z" fill="#4B5563" />
-      <line x1="24" y1="32" x2="40" y2="32" stroke="white" strokeWidth="2" strokeLinecap="round" />
-      <line x1="24" y1="38" x2="40" y2="38" stroke="white" strokeWidth="2" strokeLinecap="round" />
-      <line x1="24" y1="44" x2="34" y2="44" stroke="white" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// ─── Badge Styles ─────────────────────────────────────────────────────────────
-
-const FILE_BADGE_STYLES: Record<FileType, string> = {
-  xlsx:  'bg-emerald-100 text-emerald-800',
-  pdf:   'bg-red-100    text-red-800',
-  docx:  'bg-blue-100   text-blue-800',
-  image: 'bg-purple-100 text-purple-800',
-  other: 'bg-gray-100   text-gray-600',
-};
-
-const FILE_BADGE_LABEL: Record<FileType, string> = {
-  xlsx:  'xlsx',
-  pdf:   'pdf',
-  docx:  'docx',
-  image: 'image',
-  other: 'file',
-};
-
-// ─── Document Card ────────────────────────────────────────────────────────────
-
-function DocumentCard({ doc }: { doc: DocumentItem }) {
-  const fileType = getFileType(doc.fileName);
-  const displayName = doc.fileName ?? 'Download document';
-
-  const iconMap: Record<FileType, ReactNode> = {
-    xlsx:  <ExcelIcon />,
-    pdf:   <PdfIcon />,
-    docx:  <WordIcon />,
-    image: <ImageIcon />,
-    other: <GenericFileIcon />,
-  };
-
-  return (
-    <a
-      href={doc.url}
-      download
-      target="_blank"
-      rel="noopener noreferrer"
-      title={`Download ${displayName}`}
-      className="group flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-2.5 no-underline transition-all duration-150 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
-    >
-      {/* Left: icon (50% of original h-16 w-16) + badge stacked */}
-      <div className="flex shrink-0 flex-col items-center gap-1">
-        <span className="[&>svg]:h-8 [&>svg]:w-8">{iconMap[fileType]}</span>
-        <span
-          className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${FILE_BADGE_STYLES[fileType]}`}
-        >
-          {FILE_BADGE_LABEL[fileType]}
-        </span>
-      </div>
-
-      {/* Right: filename */}
-      <span className="max-w-[140px] break-words text-xs font-medium leading-snug text-[var(--text)] transition-colors group-hover:text-[var(--brand-600)]">
-        {displayName}
-      </span>
-    </a>
-  );
-}
-
-// ─── Documents Section ────────────────────────────────────────────────────────
-
-const MAX_VISIBLE_DOCS = 2;
-
-function DocumentCards({ documents }: { documents: DocumentItem[] }) {
-  if (documents.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-muted)]">No documents attached to this request.</p>
-    );
-  }
-
-  const visible  = documents.slice(0, MAX_VISIBLE_DOCS);
-  const overflow = documents.length - MAX_VISIBLE_DOCS;
-
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-3">
-      {visible.map((doc) => (
-        <DocumentCard key={`${doc.label}-${doc.url}`} doc={doc} />
-      ))}
-      {overflow > 0 && (
-        <span className="text-sm font-medium text-[var(--text-muted)]">
-          +{overflow} More
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ─── Page Shared Components ───────────────────────────────────────────────────
-
-function SectionTitle({ title }: { title: string }) {
-  return (
-    <div className="rounded-md bg-[var(--brand-100)] px-3 py-2 text-sm font-semibold text-[var(--brand-700)]">
-      {title}
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-[var(--border)] bg-white p-3">
-      <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</dt>
-      <dd className="mt-1 text-sm text-[var(--text)]">{value ?? '—'}</dd>
-    </div>
-  );
-}
-
-// ─── Page Props ───────────────────────────────────────────────────────────────
 
 type RequestDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -546,6 +308,15 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             </div>
           ) : null}
 
+          {/* ── General Review ── */}
+          <GeneralReviewSectionClient
+            requestId={request.id}
+            verifierComment={verifierCommentData}
+            reviewerSuggestions={reviewerSuggestionsData}
+            userRole={currentUser?.role}
+            userRoles={currentUser?.roles}
+          />
+
         </div>
       </section>
 
@@ -556,8 +327,6 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           status={request.status}
           userRole={currentUser?.role}
           userRoles={currentUser?.roles}
-          verifierComment={verifierCommentData}
-          reviewerSuggestions={reviewerSuggestionsData}
           hasEngagementSlots={hasEngagementSlots}
           hasBookedEngagement={hasBookedEngagement}
         />
