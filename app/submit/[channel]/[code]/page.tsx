@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { JVP_FORM_CODE, JVP_REQUEST_TITLE } from '@/lib/validations/jvp';
 import { PBL_FORM_CODE, PBL_REQUEST_TITLE } from '@/lib/validations/pbl';
@@ -29,10 +28,22 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
 
   if (isImplementedForm) {
     const user = await getCurrentUser();
-    // Auth disabled - allow access without login
-    // if (!user) {
-    //   redirect('/login');
-    // }
+    if (!user) {
+      return (
+        <div className="space-y-6">
+          <header className="page-header">
+            <h1 className="page-title">Sign in required</h1>
+            <p className="page-subtitle">Please sign in to create and submit requests.</p>
+          </header>
+          <Link
+            href={`/login?callbackUrl=${encodeURIComponent(`/submit/${normalizedChannel}/${encodeURIComponent(formCode)}`)}`}
+            className="inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium text-[var(--text)] transition hover:border-[var(--border-strong)]"
+          >
+            Go to login
+          </Link>
+        </div>
+      );
+    }
 
     const preferredCompany = user.companyCode
       ? await prisma.company.findUnique({

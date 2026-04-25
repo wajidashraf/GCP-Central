@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { USER_ROLES, USER_ROLE_LABELS, type UserRole } from '@/src/types/auth';
@@ -47,12 +46,7 @@ const ROLE_BADGE_CLASSNAME: Record<UserRole, string> = {
 export default async function AdminRolesPage() {
   const currentUser = await getCurrentUser();
 
-  // Auth disabled - show page without requiring login
-  // if (!currentUser) {
-  //   redirect('/login');
-  // }
-
-  if (!currentUser.roles.includes('admin')) {
+  if (!currentUser || !currentUser.roles.includes('admin')) {
     return (
       <div className="space-y-6">
         <header className="page-header">
