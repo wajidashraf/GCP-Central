@@ -27,9 +27,8 @@ export default function AppHeader({ user }: AppHeaderProps) {
     : [];
   const initials = user ? getUserInitials(user.name) : '';
   const handleSignOut = async () => {
-    await signOut({
-      callbackUrl: '/',
-    });
+    await signOut({ redirect: false });
+    window.location.assign('/');
   };
 
   return (
