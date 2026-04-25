@@ -184,7 +184,7 @@ function DocumentCard({ doc }: { doc: DocumentItem }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`Download ${displayName}`}
-      className="group flex min-w-[110px] cursor-pointer flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-5 py-4 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
+      className="group flex min-w-[100px] cursor-pointer flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] p-3 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
     >
       {iconMap[fileType]}
 
@@ -193,11 +193,6 @@ function DocumentCard({ doc }: { doc: DocumentItem }) {
         className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${FILE_BADGE_STYLES[fileType]}`}
       >
         {FILE_BADGE_LABEL[fileType]}
-      </span>
-
-      {/* Label (e.g. "RTP Document") */}
-      <span className="text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] transition-colors group-hover:text-[var(--brand-600)]">
-        {doc.label}
       </span>
 
       {/* File name */}
@@ -391,9 +386,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           {/* ── Documents ── */}
           <div>
             <SectionTitle title="Documents" />
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
               <DocumentCards documents={documents} />
-            </div>
           </div>
 
           {/* ── General Information ── */}
@@ -426,11 +419,11 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                 <DetailItem label="Tender Closing Date" value={formatDateTime(request.rtp.tenderClosingDate)} />
                 <DetailItem label="Special Project"    value={request.rtp.specialProject ? 'Yes' : 'No'} />
               </dl>
-              <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
+              <div className="mt-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Project Description
                 </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
+                <p className="rounded-lg border border-[var(--border)] bg-white p-3 mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
                   {request.rtp.projectDescription}
                 </p>
               </div>
