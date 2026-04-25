@@ -184,7 +184,7 @@ function DocumentCard({ doc }: { doc: DocumentItem }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`Download ${displayName}`}
-      className="group flex min-w-[100px] cursor-pointer flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] p-3 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
+      className="group flex min-w-[100px] cursor-pointer flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-2 no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
     >
       {iconMap[fileType]}
 
@@ -213,7 +213,7 @@ function DocumentCards({ documents }: { documents: DocumentItem[] }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="flex flex-wrap gap-4 mt-2">
       {documents.map((doc) => (
         <DocumentCard key={`${doc.label}-${doc.url}`} doc={doc} />
       ))}

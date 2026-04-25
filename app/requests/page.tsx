@@ -248,7 +248,6 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                 </Link>
               </th>
               <th>Status</th>
-              <th>SLA</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -274,7 +273,6 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                         {request.status}
                       </span>
                     </td>
-                    <td>Pending</td>
                     <td>
                       <Button
                         href={`/requests/${request.id}`}
