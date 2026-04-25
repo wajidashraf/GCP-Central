@@ -2,6 +2,7 @@ import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { USER_ROLES, USER_ROLE_LABELS, type UserRole } from '@/src/types/auth';
+import PendingSubmitButton from './pending-submit-button';
 import {
   toggleUserActiveStatusAction,
   updateUserRoleAssignmentsAction,
@@ -43,8 +44,16 @@ const ROLE_BADGE_CLASSNAME: Record<UserRole, string> = {
   admin: 'badge badge--danger',
 };
 
-export default async function AdminRolesPage() {
+type AdminRolesPageProps = {
+  searchParams: Promise<{
+    q?: string;
+  }>;
+};
+
+export default async function AdminRolesPage({ searchParams }: AdminRolesPageProps) {
   const currentUser = await getCurrentUser();
+  const { q } = await searchParams;
+  const query = (q ?? '').trim().toLowerCase();
 
   if (!currentUser || !currentUser.roles.includes('admin')) {
     return (
@@ -107,6 +116,20 @@ export default async function AdminRolesPage() {
     slug,
     label: roleNameMap.get(slug) ?? USER_ROLE_LABELS[slug],
   }));
+  const filteredUsers = query
+    ? users.filter((user: typeof users[number]) => {
+        const searchable = [
+          user.name,
+          user.email,
+          user.username,
+          user.company?.companyName ?? '',
+          user.company?.companyCode ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return searchable.includes(query);
+      })
+    : users;
 
   return (
     <div className="space-y-6">
@@ -119,14 +142,33 @@ export default async function AdminRolesPage() {
       </header>
 
       <div className="surface-card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge--brand">Users: {users.length}</span>
-          <span className="badge badge--success">
-            Active: {users.filter((user: typeof users[number]) => user.isActive).length}
-          </span>
-          <span className="badge badge--neutral">
-            Inactive: {users.filter((user: typeof users[number]) => !user.isActive).length}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge--brand">Users: {users.length}</span>
+            <span className="badge badge--success">
+              Active: {users.filter((user: typeof users[number]) => user.isActive).length}
+            </span>
+            <span className="badge badge--neutral">
+              Inactive: {users.filter((user: typeof users[number]) => !user.isActive).length}
+            </span>
+          </div>
+          <form method="get" className="flex w-full items-center gap-2 sm:w-auto">
+            <input
+              type="text"
+              name="q"
+              defaultValue={q ?? ''}
+              placeholder="Search by name, email, username, company..."
+              className="input h-9 min-w-[280px] py-0 text-sm"
+            />
+            <button type="submit" className="btn btn--secondary btn--sm">
+              Search
+            </button>
+            {query ? (
+              <Link href="/admin/roles" className="btn btn--ghost btn--sm">
+                Clear
+              </Link>
+            ) : null}
+          </form>
         </div>
       </div>
 
@@ -142,8 +184,8 @@ export default async function AdminRolesPage() {
             </tr>
           </thead>
           <tbody>
-            {users.length > 0 ? (
-              users.map((user: typeof users[number]) => {
+            {filteredUsers.length > 0 ? (
+              filteredUsers.map((user: typeof filteredUsers[number]) => {
                 const primaryRole = normalizeRole(user.primaryRole);
                 const assignedRoles = normalizeRoles(primaryRole, user.roles);
 
@@ -215,11 +257,14 @@ export default async function AdminRolesPage() {
                             ))}
                           </div>
 
-                          <button type="submit" className="btn btn--secondary btn--sm">
-                            Save Roles
-                          </button>
+                          <div>
+                            <PendingSubmitButton
+                              idleLabel="Save Roles"
+                              pendingLabel="Saving..."
+                              className="btn btn--secondary btn--sm"
+                            />
+                          </div>
                         </form>
-
                         <form action={toggleUserActiveStatusAction}>
                           <input type="hidden" name="userId" value={user.id} />
                           <input
@@ -227,12 +272,11 @@ export default async function AdminRolesPage() {
                             name="nextActive"
                             value={user.isActive ? 'false' : 'true'}
                           />
-                          <button
-                            type="submit"
+                          <PendingSubmitButton
+                            idleLabel={user.isActive ? 'Deactivate' : 'Activate'}
+                            pendingLabel={user.isActive ? 'Deactivating...' : 'Activating...'}
                             className={`btn btn--sm ${user.isActive ? 'btn--danger' : 'btn--accent'}`}
-                          >
-                            {user.isActive ? 'Deactivate' : 'Activate'}
-                          </button>
+                          />
                         </form>
                       </div>
                     </td>
@@ -242,9 +286,13 @@ export default async function AdminRolesPage() {
             ) : (
               <tr>
                 <td colSpan={5} className="py-10 text-center">
-                  <p className="text-sm font-semibold text-[var(--text)]">No users found</p>
+                  <p className="text-sm font-semibold text-[var(--text)]">
+                    {query ? 'No users match your search' : 'No users found'}
+                  </p>
                   <p className="mt-1 text-sm text-[var(--text-muted)]">
-                    Run the seed script to create users, then refresh this page.
+                    {query
+                      ? 'Try another keyword for name, email, username, or company.'
+                      : 'Run the seed script to create users, then refresh this page.'}
                   </p>
                 </td>
               </tr>
