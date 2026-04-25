@@ -32,13 +32,30 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { slotName, startTime, endTime, attendees } = body;
+    const normalizedSlotName = typeof slotName === 'string' ? slotName.trim() : '';
     const attendeeIds = Array.isArray(attendees)
       ? attendees.filter((attendee: unknown): attendee is string => typeof attendee === 'string')
       : [];
 
-    if (!slotName || !startTime || !endTime) {
+    if (!normalizedSlotName || !startTime || !endTime) {
       return NextResponse.json(
         { error: 'Slot name, start time, and end time are required' },
+        { status: 400 }
+      );
+    }
+
+    const parsedStartTime = new Date(startTime);
+    const parsedEndTime = new Date(endTime);
+    if (Number.isNaN(parsedStartTime.getTime()) || Number.isNaN(parsedEndTime.getTime())) {
+      return NextResponse.json(
+        { error: 'Start time and end time must be valid date-time values' },
+        { status: 400 }
+      );
+    }
+
+    if (parsedEndTime <= parsedStartTime) {
+      return NextResponse.json(
+        { error: 'End time must be later than start time' },
         { status: 400 }
       );
     }
@@ -77,9 +94,9 @@ export async function POST(request: NextRequest) {
 
     const slot = await prisma.engagementSlot.create({
       data: {
-        slotName,
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
+        slotName: normalizedSlotName,
+        startTime: parsedStartTime,
+        endTime: parsedEndTime,
         attendees: attendeeIds,
         createdBy: user.id,
       },
@@ -88,8 +105,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(slot, { status: 201 });
   } catch (error) {
     console.error('Error creating slot:', error);
+    const message = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: message },
       { status: 500 }
     );
   }

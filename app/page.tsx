@@ -1,5 +1,6 @@
 import Button from '@/src/components/ui/button';
 import { StepsIllustration } from '@/src/components/illustrations/stepIllustration';
+import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { ArrowRight, BarChart3, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 const METRICS = [
@@ -24,7 +25,11 @@ const STATUS_CLASS_MAP: Record<string, string> = {
   neutral: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await getCurrentUser();
+  const createRequestHref = user ? '/submit' : '/login?callbackUrl=/submit';
+  const reviewRequestsHref = user ? '/requests' : '/login?callbackUrl=/requests';
+
   return (
     <div className="space-y-6">
       <section className="surface-card relative overflow-hidden px-6 pb-14 pt-12 lg:px-10 lg:pb-16 lg:pt-14">
@@ -54,11 +59,11 @@ export default function HomePage() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button href="/submit" variant="primary" size="lg" className="group h-14 px-8 text-lg shadow-[var(--shadow-mid)]">
+            <Button href={createRequestHref} variant="primary" size="lg" className="group h-14 px-8 text-lg shadow-[var(--shadow-mid)]">
               Create Request
               <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Button>
-            <Button href="/requests" variant="secondary" size="lg" className="h-14 bg-white/95 px-8 text-lg">
+            <Button href={reviewRequestsHref} variant="secondary" size="lg" className="h-14 bg-white/95 px-8 text-lg">
               Review Requests
             </Button>
           </div>

@@ -26,6 +26,11 @@ export default function AppHeader({ user }: AppHeaderProps) {
     ? NAV_ITEMS.filter((item) => item.roles.some((role) => userRoleSet.has(role)))
     : [];
   const initials = user ? getUserInitials(user.name) : '';
+  const handleSignOut = async () => {
+    await signOut({
+      callbackUrl: '/',
+    });
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-white/90 backdrop-blur">
@@ -75,7 +80,7 @@ export default function AppHeader({ user }: AppHeaderProps) {
               <button
                 type="button"
                 className="btn btn--secondary btn--sm"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={handleSignOut}
               >
                 Sign out
               </button>

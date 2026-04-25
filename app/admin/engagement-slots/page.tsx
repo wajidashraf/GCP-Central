@@ -18,12 +18,41 @@ interface Reviewer {
   email: string;
 }
 
+const DURATION_OPTIONS = [
+  { value: '15', label: '15 mins', minutes: 15 },
+  { value: '30', label: '30 mins', minutes: 30 },
+  { value: '45', label: '45 mins', minutes: 45 },
+  { value: '60', label: '60 mins', minutes: 60 },
+  { value: '90', label: '1.5 hours', minutes: 90 },
+  { value: 'custom', label: 'Custom', minutes: null },
+] as const;
+
+type DurationOptionValue = (typeof DURATION_OPTIONS)[number]['value'];
+
+function toLocalDateTimeInputValue(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function addMinutesToDateTime(dateTimeValue: string, minutes: number) {
+  const startDate = new Date(dateTimeValue);
+  if (Number.isNaN(startDate.getTime())) {
+    return '';
+  }
+
+  const endDate = new Date(startDate.getTime() + minutes * 60_000);
+  return toLocalDateTimeInputValue(endDate);
+}
+
 export default function EngagementSlotsPage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [durationPreset, setDurationPreset] = useState<DurationOptionValue>('30');
+  const [customDurationMinutes, setCustomDurationMinutes] = useState('30');
   const [formData, setFormData] = useState({
     slotName: '',
     startTime: '',
@@ -62,13 +91,73 @@ export default function EngagementSlotsPage() {
     }
   };
 
+  const applyDuration = (startTime: string, preset: DurationOptionValue, customMinutes: string) => {
+    if (!startTime) {
+      return '';
+    }
+
+    const matchedOption = DURATION_OPTIONS.find((option) => option.value === preset);
+    if (!matchedOption) {
+      return '';
+    }
+
+    if (matchedOption.value !== 'custom') {
+      return addMinutesToDateTime(startTime, matchedOption.minutes ?? 0);
+    }
+
+    const parsedCustomMinutes = Number(customMinutes);
+    if (!Number.isFinite(parsedCustomMinutes) || parsedCustomMinutes <= 0) {
+      return '';
+    }
+
+    return addMinutesToDateTime(startTime, parsedCustomMinutes);
+  };
+
+  const handleStartTimeChange = (startTime: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      startTime,
+      endTime: applyDuration(startTime, durationPreset, customDurationMinutes),
+    }));
+  };
+
+  const handleDurationPresetChange = (nextPreset: DurationOptionValue) => {
+    setDurationPreset(nextPreset);
+    setFormData((prev) => ({
+      ...prev,
+      endTime: applyDuration(prev.startTime, nextPreset, customDurationMinutes),
+    }));
+  };
+
+  const handleCustomDurationChange = (value: string) => {
+    setCustomDurationMinutes(value);
+    setFormData((prev) => ({
+      ...prev,
+      endTime: applyDuration(prev.startTime, durationPreset, value),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
 
     if (formData.attendees.length < 1) {
-      alert('Please select at least one reviewer attendee');
+      setErrorMessage('Please select at least one reviewer attendee.');
       return;
     }
+
+    if (!formData.startTime || !formData.endTime) {
+      setErrorMessage('Please select start date-time and duration.');
+      return;
+    }
+
+    const startDate = new Date(formData.startTime);
+    const endDate = new Date(formData.endTime);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate <= startDate) {
+      setErrorMessage('End date-time must be later than start date-time.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -76,23 +165,27 @@ export default function EngagementSlotsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          slotName: formData.slotName,
-          startTime: new Date(formData.startTime),
-          endTime: new Date(formData.endTime),
+          slotName: formData.slotName.trim(),
+          startTime: formData.startTime,
+          endTime: formData.endTime,
           attendees: formData.attendees,
         }),
       });
 
       if (response.ok) {
         setFormData({ slotName: '', startTime: '', endTime: '', attendees: [] });
+        setDurationPreset('30');
+        setCustomDurationMinutes('30');
+        setErrorMessage(null);
         setIsModalOpen(false);
         fetchSlots();
       } else {
-        alert('Error creating slot');
+        const responseData = (await response.json().catch(() => null)) as { error?: string } | null;
+        setErrorMessage(responseData?.error ?? 'Error creating slot.');
       }
     } catch (error) {
       console.error('Error creating slot:', error);
-      alert('Error creating slot');
+      setErrorMessage('Error creating slot.');
     } finally {
       setIsSubmitting(false);
     }
@@ -115,7 +208,10 @@ export default function EngagementSlotsPage() {
           <p className="page-subtitle">Create and manage engagement slots for request reviews</p>
         </div>
         <Button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setErrorMessage(null);
+            setIsModalOpen(true);
+          }}
           variant="primary"
           size="sm"
         >
@@ -179,16 +275,16 @@ export default function EngagementSlotsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label htmlFor="startTime" className="mb-2 block text-sm font-medium text-[var(--text)]">
-                    Start Time
+                    Start Date & Time
                   </label>
                   <input
                     id="startTime"
                     type="datetime-local"
                     value={formData.startTime}
-                    onChange={e => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                    onChange={e => handleStartTimeChange(e.target.value)}
                     className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--brand-500)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-100)]"
                     disabled={isSubmitting}
                     required
@@ -196,20 +292,67 @@ export default function EngagementSlotsPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="endTime" className="mb-2 block text-sm font-medium text-[var(--text)]">
-                    End Time
+                  <label htmlFor="duration" className="mb-2 block text-sm font-medium text-[var(--text)]">
+                    Duration
+                  </label>
+                  <select
+                    id="duration"
+                    value={durationPreset}
+                    onChange={(e) => handleDurationPresetChange(e.target.value as DurationOptionValue)}
+                    className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--brand-500)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-100)]"
+                    disabled={isSubmitting}
+                  >
+                    {DURATION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {durationPreset === 'custom' ? (
+                <div>
+                  <label htmlFor="customDurationMinutes" className="mb-2 block text-sm font-medium text-[var(--text)]">
+                    Custom Duration (minutes)
                   </label>
                   <input
-                    id="endTime"
-                    type="datetime-local"
-                    value={formData.endTime}
-                    onChange={e => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                    id="customDurationMinutes"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={customDurationMinutes}
+                    onChange={(e) => handleCustomDurationChange(e.target.value)}
                     className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--brand-500)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-100)]"
                     disabled={isSubmitting}
                     required
                   />
                 </div>
+              ) : null}
+
+              <div>
+                <label htmlFor="endTime" className="mb-2 block text-sm font-medium text-[var(--text)]">
+                  End Date & Time (auto)
+                </label>
+                <input
+                  id="endTime"
+                  type="datetime-local"
+                  value={formData.endTime}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)]"
+                  disabled
+                  required
+                />
+                <p className="mt-1 text-xs text-[var(--text-subtle)]">
+                  Auto-calculated from selected start date-time and duration.
+                </p>
               </div>
+
+              {errorMessage ? (
+                <div className="alert alert--danger">
+                  <p className="alert__title">Unable to create slot</p>
+                  <p className="alert__body">{errorMessage}</p>
+                </div>
+              ) : null}
 
               <div>
                 <label className="mb-3 block text-sm font-medium text-[var(--text)]">
@@ -241,7 +384,10 @@ export default function EngagementSlotsPage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setErrorMessage(null);
+                    setIsModalOpen(false);
+                  }}
                   disabled={isSubmitting}
                 >
                   Cancel

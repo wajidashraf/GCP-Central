@@ -2,10 +2,20 @@
 
 import { type FormEvent, useState } from 'react';
 import { signIn } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import Button from '@/src/components/ui/button';
 
+function normalizeCallbackPath(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/';
+  }
+
+  return value;
+}
+
 export default function LoginForm() {
-  const callbackUrl = '/';
+  const searchParams = useSearchParams();
+  const callbackUrl = normalizeCallbackPath(searchParams.get('callbackUrl'));
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -37,7 +47,7 @@ export default function LoginForm() {
         return;
       }
 
-      // Hard redirect so the server-rendered layout re-reads the session cookie
+      // Hard redirect so the server-rendered layout re-reads the session cookie.
       window.location.href = callbackUrl;
     } catch {
       setErrorMessage('Unable to sign in right now. Please try again.');
