@@ -275,6 +275,10 @@ model Engagement {
   requestId String   @db.ObjectId
   slotId    String   @db.ObjectId
   requestorId String @db.ObjectId
+  engagementNumber String?
+  name      String?
+  type      String?
+  location  String?
   status    String   @default("scheduled")
   notes     String?
   createdAt DateTime @default(now())
@@ -284,6 +288,7 @@ model Engagement {
   slot    EngagementSlot @relation(fields: [slotId], references: [id])
 
   @@index([requestId])
+  @@index([engagementNumber])
   @@index([slotId])
   @@index([requestorId])
 }
