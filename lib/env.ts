@@ -12,6 +12,14 @@ export const env = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
   RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || "",
   AUTH_SECRET: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "",
+  // Nodemailer Configuration
+  EMAIL_SERVICE: process.env.EMAIL_SERVICE || "gmail", // or 'custom' for custom SMTP
+  EMAIL_HOST: process.env.EMAIL_HOST || "",
+  EMAIL_PORT: parseInt(process.env.EMAIL_PORT || "587", 10),
+  EMAIL_USER: process.env.EMAIL_USER || "",
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || "",
+  EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || "GCP Central",
+  EMAIL_FROM_EMAIL: process.env.EMAIL_FROM_EMAIL || "",
 } as const;
 
 /**

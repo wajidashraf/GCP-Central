@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
+import { sendEmail } from '@/lib/email/email-service';
+import {
+  getEngagementBookingTemplate,
+  htmlToPlainText,
+} from '@/lib/email/email-templates';
 
 const SLOT_STATUS_AVAILABLE = 'available';
 const SLOT_STATUS_BOOKED = 'booked';
@@ -21,6 +26,139 @@ async function generateEngagementNumber(requestId: string) {
   });
 
   return `R${String(completedCount + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Send engagement booking notifications to all slot attendees
+ */
+async function sendEngagementNotifications(
+  engagement: any,
+  requestId: string,
+  slotId: string,
+  engagementName: string,
+  engagementType: EngagementType,
+  engagementLocation: string | null
+) {
+  try {
+    // Fetch engagement slot with attendees
+    const slot = await prisma.engagementSlot.findUnique({
+      where: { id: slotId },
+      select: {
+        attendees: true,
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    if (!slot || !slot.attendees || slot.attendees.length === 0) {
+      console.log('No attendees found for slot:', slotId);
+      return;
+    }
+
+    // Fetch request details
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
+      select: {
+        requestNo: true,
+        requestTitle: true,
+        requestType: true,
+        requestorName: true,
+        companyName: true,
+      },
+    });
+
+    if (!request) {
+      console.error('Request not found:', requestId);
+      return;
+    }
+
+    // Fetch requestor user details (for name and reply-to)
+    const requestor = await prisma.user.findUnique({
+      where: { id: engagement.requestorId },
+      select: { name: true, email: true },
+    });
+
+    // slot.attendees contains user IDs — look up their actual email addresses
+    const attendeeUsers = await prisma.user.findMany({
+      where: { id: { in: slot.attendees } },
+      select: { id: true, name: true, email: true },
+    });
+
+    if (attendeeUsers.length === 0) {
+      console.warn('Could not resolve any attendee emails for slot:', slotId);
+      return;
+    }
+
+    const resolvedAttendeeIds = new Set(attendeeUsers.map((attendee) => attendee.id));
+    const unresolvedAttendeeIds = slot.attendees.filter((attendeeId) => !resolvedAttendeeIds.has(attendeeId));
+    if (unresolvedAttendeeIds.length > 0) {
+      console.warn('Some slot attendee IDs could not be resolved to users:', {
+        slotId,
+        unresolvedAttendeeIds,
+      });
+    }
+
+    const requestorName = requestor?.name || request.requestorName;
+    const engagementUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
+
+    // Send email to each resolved attendee
+    for (const attendee of attendeeUsers) {
+      try {
+        const attendeeEmail = attendee.email?.trim().toLowerCase();
+        if (!attendeeEmail) {
+          console.warn('Attendee has no email, skipping:', attendee.id);
+          continue;
+        }
+
+        const html = getEngagementBookingTemplate(
+          attendee.name || 'Attendee',
+          requestorName,
+          request.companyName,
+          engagementType,
+          engagementLocation,
+          request.requestNo,
+          request.requestTitle,
+          request.requestType,
+          slot.startTime,
+          slot.endTime,
+          engagementUrl,
+          'GCP Central'
+        );
+
+        const emailResult = await sendEmail({
+          to: attendeeEmail,
+          subject: `Engagement Scheduled: ${request.requestNo} - ${requestorName}`,
+          html,
+          text: htmlToPlainText(html),
+          replyTo: requestor?.email || undefined,
+        });
+
+        if (!emailResult.success) {
+          console.error('Engagement notification email failed:', {
+            attendeeId: attendee.id,
+            attendeeEmail,
+            error: emailResult.error,
+          });
+          continue;
+        }
+
+        console.log('Engagement notification email accepted by SMTP:', {
+          attendeeId: attendee.id,
+          attendeeEmail,
+          messageId: emailResult.messageId,
+          accepted: emailResult.accepted,
+          rejected: emailResult.rejected,
+          response: emailResult.response,
+        });
+      } catch (error) {
+        console.error(`Failed to send email to attendee ${attendee.id}:`, error);
+        // Continue sending to other attendees even if one fails
+      }
+    }
+  } catch (error) {
+    console.error('Error in sendEngagementNotifications:', error);
+    // Don't throw - this shouldn't break the booking process
+  }
 }
 
 function normalizeString(value: unknown) {
@@ -189,6 +327,21 @@ export async function POST(
         where: { id },
         data: { status: 'In Review' },
       });
+
+      // Send email notifications to slot attendees
+      try {
+        await sendEngagementNotifications(
+          engagement,
+          id,
+          slotId,
+          name,
+          type,
+          selectedLocation || null
+        );
+      } catch (emailError) {
+        console.error('Failed to send engagement notifications:', emailError);
+        // Don't fail the entire request if email fails
+      }
     } catch (innerError) {
       await prisma.engagementSlot
         .update({ where: { id: slotId }, data: { status: SLOT_STATUS_AVAILABLE } })

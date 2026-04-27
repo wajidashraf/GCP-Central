@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
-import { REQUEST_STATUS } from '@/src/constants/enums/requestStatus';
+import { REQUEST_STATUS, REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
+import { sendEmail } from '@/lib/email/email-service';
+import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
+
+const READY_FOR_ENGAGEMENT_STATUS = REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label;
 
 function normalizeRequestStatus(value: unknown) {
   if (typeof value !== 'string') {
@@ -12,6 +16,81 @@ function normalizeRequestStatus(value: unknown) {
   const normalized = value.trim().toLowerCase();
   const matched = REQUEST_STATUS.find((status) => status.label.toLowerCase() === normalized);
   return matched?.label ?? null;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function sendReadyForEngagementEmail({
+  requestNo,
+  requestTitle,
+  requestorEmail,
+  requestorName,
+  verifierName,
+  comment,
+  requestId,
+}: {
+  requestNo: string;
+  requestTitle: string;
+  requestorEmail: string;
+  requestorName: string;
+  verifierName: string;
+  comment: string;
+  requestId: string;
+}) {
+  const recipientEmail = requestorEmail.trim().toLowerCase();
+  if (!recipientEmail) {
+    console.warn('Skipping Ready for Engagement email: requestor email is missing', {
+      requestId,
+      requestNo,
+    });
+    return;
+  }
+
+  const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
+  const html = getCustomTemplate(
+    `Request Ready for Engagement: ${requestNo}`,
+    [
+      `Hello ${escapeHtml(requestorName || 'Requestor')},`,
+      `Your request "${escapeHtml(requestTitle)}" has been verified by ${escapeHtml(verifierName)} and is now Ready for Engagement.`,
+      `Verifier comment: ${escapeHtml(comment)}`,
+    ].join('<br><br>'),
+    'View Request',
+    requestUrl,
+    'GCP Central'
+  );
+
+  const result = await sendEmail({
+    to: recipientEmail,
+    subject: `Ready for Engagement: ${requestNo}`,
+    html,
+    text: htmlToPlainText(html),
+  });
+
+  if (!result.success) {
+    console.error('Ready for Engagement email failed:', {
+      requestId,
+      requestNo,
+      requestorEmail: recipientEmail,
+      error: result.error,
+    });
+    return;
+  }
+
+  console.log('Ready for Engagement email accepted by SMTP:', {
+    requestId,
+    requestNo,
+    requestorEmail: recipientEmail,
+    messageId: result.messageId,
+    accepted: result.accepted,
+    rejected: result.rejected,
+  });
 }
 
 export async function POST(
@@ -87,6 +166,20 @@ export async function POST(
         verifiedAt: new Date(),
       },
     });
+
+    if (normalizedRequestStatus === READY_FOR_ENGAGEMENT_STATUS) {
+      await sendReadyForEngagementEmail({
+        requestNo: requestRecord.requestNo,
+        requestTitle: requestRecord.requestTitle,
+        requestorEmail: requestRecord.requestorEmail,
+        requestorName: requestRecord.requestorName,
+        verifierName: user.name,
+        comment: normalizedComment,
+        requestId: id,
+      }).catch((emailError) => {
+        console.error('Ready for Engagement notification failed:', emailError);
+      });
+    }
 
     return NextResponse.json(verifierComment);
   } catch (error) {
