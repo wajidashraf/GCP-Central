@@ -1,6 +1,10 @@
 ﻿import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import type { Prisma } from '@prisma/client';
 import Button from '@/src/components/ui/button';
 import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Draft: 'badge--neutral',
@@ -47,13 +51,39 @@ type RequestFilterOption = {
   routingType: string;
 };
 
+function buildVisibilityWhere(
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>
+): Prisma.RequestWhereInput {
+  const canViewAll =
+    hasRole(user, 'admin') ||
+    hasRole(user, 'verifier') ||
+    hasRole(user, 'reviewer') ||
+    hasRole(user, 'working_gcpc');
+
+  if (canViewAll) {
+    return {};
+  }
+
+  if (hasRole(user, 'hoc') && user.companyId) {
+    return { companyId: user.companyId };
+  }
+
+  return { requestorId: user.id };
+}
+
 export default async function RequestsPage({ searchParams }: RequestsPageProps) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    redirect('/login?callbackUrl=/requests');
+  }
+
   const params = await searchParams;
   const selectedCompany = params.company?.trim() ?? '';
   const selectedStatus = params.status?.trim() ?? '';
   const selectedType = params.type?.trim() ?? '';
   const sortBy = params.sortBy === 'requestNo' || params.sortBy === 'submitted' ? params.sortBy : 'submitted';
   const sortDir = params.sortDir === 'asc' || params.sortDir === 'desc' ? params.sortDir : 'desc';
+  const visibilityWhere = buildVisibilityWhere(currentUser);
 
   let loadError = false;
   let requests: Array<{
@@ -71,7 +101,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   }> = [];
 
   try {
-    const whereClause = {
+    const filterWhere: Prisma.RequestWhereInput = {
       ...(selectedCompany ? { companyName: selectedCompany } : {}),
       ...(selectedStatus ? { status: selectedStatus } : {}),
       ...(selectedType
@@ -79,6 +109,9 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
             OR: [{ requestType: selectedType }, { routingType: selectedType }],
           }
         : {}),
+    };
+    const whereClause: Prisma.RequestWhereInput = {
+      AND: [visibilityWhere, filterWhere],
     };
 
     const sortOrder =
@@ -128,6 +161,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   }
 
   const filterOptions: RequestFilterOption[] = await prisma.request.findMany({
+    where: visibilityWhere,
     select: {
       companyName: true,
       status: true,

@@ -14,6 +14,12 @@ const ADMIN_SECTIONS = [
     href: '/admin/engagement-slots',
   },
   {
+    title: 'Signatory groups',
+    description: 'Maintain Prepared and Confirmed signatory members used on requests in Pending Review.',
+    sprint: 'Live',
+    href: '/admin/signatories',
+  },
+  {
     title: 'SLA Configuration',
     description: 'Configure threshold timing by workflow stage and define breach conditions.',
     sprint: 'Sprint 3 · FR19',

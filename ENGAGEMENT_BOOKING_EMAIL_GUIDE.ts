@@ -314,11 +314,7 @@ const exampleCustomLocationBooking = {
  * ============================================================================
  */
 
+/** Placeholder default export so this documentation file stays valid `.ts` (no JSX). */
 export default function EngagementBookingGuide() {
-  return (
-    <div>
-      <h1>Engagement Booking Email Integration</h1>
-      <p>Feature is fully integrated. Check the comments in this file for details.</p>
-    </div>
-  );
+  return null;
 }

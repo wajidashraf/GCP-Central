@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 // Ensure we don't overwrite models when hot reloading
 const models = mongoose.models;
@@ -166,6 +166,7 @@ export const ReviewerSuggestionSchema = new Schema({
   reviewerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   reviewerName: { type: String },
   suggestion: { type: String, required: true },
+  sourceRole: { type: String },
   status: { type: String, default: 'pending' },
   action: { type: String },
 }, { timestamps: true });

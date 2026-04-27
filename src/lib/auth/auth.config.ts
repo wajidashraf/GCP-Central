@@ -15,7 +15,8 @@ function normalizeRole(value: string | null | undefined): UserRole {
     return FALLBACK_ROLE;
   }
 
-  return isUserRole(value) ? value : FALLBACK_ROLE;
+  const normalized = value.trim().toLowerCase();
+  return isUserRole(normalized) ? normalized : FALLBACK_ROLE;
 }
 
 function readCredentialValue(value: unknown) {

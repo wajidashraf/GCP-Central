@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Button from '@/src/components/ui/button';
 import VerifyModal from '@/src/components/modals/verify-modal';
 import ReviewModal from '@/src/components/modals/review-modal';
+import AddDecisionModal from '@/src/components/modals/add-decision-modal';
 import { useRouter } from 'next/navigation';
 
 interface RequestActionsSectionProps {
@@ -12,10 +13,13 @@ interface RequestActionsSectionProps {
   requestType: string;
   isSpecialProject?: boolean;
   reviewerSuggestionsCount?: number;
+  workingGcpcSuggestionsCount?: number;
   userRole?: string;
   userRoles?: string[];
-  hasEngagementSlots?: boolean;
-  hasBookedEngagement?: boolean;
+  /** Prefill verifier comment when opening Add decision (from relation or denormalised field). */
+  initialVerifierComment?: string | null;
+  /** Prefill decision code when it is stored as 1–5 (not a legacy status label). */
+  initialVerifierDecisionCode?: string | null;
 }
 
 export default function RequestActionsSection({
@@ -24,30 +28,40 @@ export default function RequestActionsSection({
   requestType,
   isSpecialProject = false,
   reviewerSuggestionsCount = 0,
+  workingGcpcSuggestionsCount = 0,
   userRole,
   userRoles = [],
-  hasEngagementSlots,
-  hasBookedEngagement = false,
+  initialVerifierComment = null,
+  initialVerifierDecisionCode = null,
 }: RequestActionsSectionProps) {
   const router = useRouter();
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [addDecisionModalOpen, setAddDecisionModalOpen] = useState(false);
+  const [reviewSourceRole, setReviewSourceRole] = useState<'reviewer' | 'working_gcpc'>('reviewer');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedStatus = status.trim().toLowerCase();
-  console.log(normalizedStatus);
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
-  console.log(roleSet);
   const hasRole = (role: string) => roleSet.has(role);
   const isAdmin = hasRole('admin');
   const canActAsVerifier = isAdmin || hasRole('verifier');
   const canActAsReviewer = isAdmin || hasRole('reviewer');
+  const canActAsWorkingGcpc = isAdmin || hasRole('working_gcpc');
   const canActAsRequestor = isAdmin || hasRole('requestor');
   const isFrOrRs = normalizedStatus === 'fr' || normalizedStatus === 'rs';
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
-  const canReview = canActAsReviewer && (normalizedStatus === 'R' ||normalizedStatus === 'r');
-  const canCompleteReview = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'R' && !isFrOrRs;
+  const canReview = canActAsReviewer && normalizedStatus === 'r';
+  const canMarkReviewAsDraft = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'r' && !isFrOrRs;
+  const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'draft review';
+  const canMarkAsPendingReview = canActAsVerifier && workingGcpcSuggestionsCount > 0 && normalizedStatus === 'draft review';
   const canBookEngagement = canActAsRequestor && ['ready for engagement'].includes(normalizedStatus);
+  const canMoveToPendingAcceptance =
+    (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'complete review';
+  const canOpenEndorsement =
+    (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'pending endorse';
+  const canOpenAcknowledgement =
+    (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'pending ack';
 
   const handleVerifySubmit = async (data: { comment: string; requestStatus: string }) => {
     setIsSubmitting(true);
@@ -75,7 +89,7 @@ export default function RequestActionsSection({
       const response = await fetch(`/api/requests/${requestId}/reviewer-suggestion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, sourceRole: reviewSourceRole }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Failed to submit suggestion');
@@ -89,14 +103,14 @@ export default function RequestActionsSection({
     }
   };
 
-  const handleCompleteReview = async () => {
+  const handleMarkReviewAsDraft = async () => {
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/requests/${requestId}/complete-review`, {
+      const response = await fetch(`/api/requests/${requestId}/draft-review`, {
         method: 'POST',
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || 'Failed to complete review');
+      if (!response.ok) throw new Error(payload?.error || 'Failed to mark review as draft');
       router.refresh();
     } catch (error) {
       throw error;
@@ -105,7 +119,43 @@ export default function RequestActionsSection({
     }
   };
 
-  const showActions = canVerify || canReview || canCompleteReview || canBookEngagement;
+  const handleAddDecisionSubmit = async (data: { comment: string; decisionCode: string }) => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/requests/${requestId}/pending-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comment: data.comment,
+          decisionCode: data.decisionCode,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'Failed to submit decision');
+      setAddDecisionModalOpen(false);
+      router.refresh();
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openReviewModal = (sourceRole: 'reviewer' | 'working_gcpc') => {
+    setReviewSourceRole(sourceRole);
+    setReviewModalOpen(true);
+  };
+
+  const showActions =
+    canVerify ||
+    canReview ||
+    canMarkReviewAsDraft ||
+    canReviewAsWorkingGcpc ||
+    canMarkAsPendingReview ||
+    canBookEngagement ||
+    canMoveToPendingAcceptance ||
+    canOpenEndorsement ||
+    canOpenAcknowledgement;
   if (!showActions) {
     return null;
   }
@@ -128,20 +178,36 @@ export default function RequestActionsSection({
             <Button
               variant="accent"
               size="sm"
-              onClick={() => setReviewModalOpen(true)}
+              onClick={() => openReviewModal('reviewer')}
             >
               Review Data
             </Button>
           )}
 
-          {canCompleteReview && (
+          {canMarkReviewAsDraft && (
             <Button
               variant="primary"
               size="sm"
               disabled={isSubmitting}
-              onClick={handleCompleteReview}
+              onClick={handleMarkReviewAsDraft}
             >
-              {isSubmitting ? 'Marking Complete...' : 'Mark Review Complete'}
+              {isSubmitting ? 'Marking Draft...' : 'Mark Review as Draft'}
+            </Button>
+          )}
+
+          {canReviewAsWorkingGcpc && (
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => openReviewModal('working_gcpc')}
+            >
+              Review Request Data
+            </Button>
+          )}
+
+          {canMarkAsPendingReview && (
+            <Button variant="primary" size="sm" disabled={isSubmitting} onClick={() => setAddDecisionModalOpen(true)}>
+              Add decision
             </Button>
           )}
 
@@ -152,6 +218,24 @@ export default function RequestActionsSection({
               size="sm"
             >
               Book Engagement
+            </Button>
+          )}
+
+          {canMoveToPendingAcceptance && (
+            <Button variant="primary" size="sm" href={`/requests/${requestId}/review-acceptance`}>
+              Accept Review
+            </Button>
+          )}
+
+          {canOpenEndorsement && (
+            <Button variant="primary" size="sm" href={`/requests/${requestId}/endorsement`}>
+              ENDORSEMENT
+            </Button>
+          )}
+
+          {canOpenAcknowledgement && (
+            <Button variant="primary" size="sm" href={`/requests/${requestId}/acknowledgement`}>
+              Acknowledgement
             </Button>
           )}
         </div>
@@ -172,6 +256,16 @@ export default function RequestActionsSection({
         isOpen={reviewModalOpen}
         onClose={() => setReviewModalOpen(false)}
         onSubmit={handleReviewSubmit}
+        isLoading={isSubmitting}
+      />
+
+      <AddDecisionModal
+        isOpen={addDecisionModalOpen}
+        onClose={() => !isSubmitting && setAddDecisionModalOpen(false)}
+        onSubmit={handleAddDecisionSubmit}
+        requestType={requestType}
+        initialComment={initialVerifierComment}
+        initialDecisionCode={initialVerifierDecisionCode}
         isLoading={isSubmitting}
       />
     </>

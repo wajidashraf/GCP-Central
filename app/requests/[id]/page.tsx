@@ -1,6 +1,7 @@
 import Button from '@/src/components/ui/button';
 import RequestActionsSection from '@/src/components/sections/request-actions-section';
 import GeneralReviewSectionClient from '@/src/components/sections/general-review-section-client';
+import RequestSignatureSection from '@/src/components/sections/request-signature-section';
 import { DocumentCards, DocumentItem } from '@/src/components/sections/document-card';
 import {
   SectionTitle,
@@ -12,6 +13,8 @@ import {
 import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
+import { ensureCompleteReviewFromSignatures } from '@/src/lib/requests/ensure-complete-review-from-signatures';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,13 +22,21 @@ type RequestDetailPageProps = {
   params: Promise<{ id: string }>;
 };
 
+function verifierDecisionCodePrefill(
+  relationCode: string | null | undefined,
+  requestScalar: string | null | undefined
+): string | null {
+  const raw = (relationCode ?? requestScalar ?? '').trim();
+  return /^[1-5]$/.test(raw) ? raw : null;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function RequestDetailPage({ params }: RequestDetailPageProps) {
   const { id } = await params;
   const currentUser = await getCurrentUser();
 
-  const request = await prisma.request.findUnique({
+  let request = await prisma.request.findUnique({
     where: { id },
     include: {
       company: {
@@ -61,16 +72,22 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       reviewerSuggestions: {
         orderBy: { createdAt: 'desc' },
       },
-      engagements: {
-        include: {
-          slot: true,
-        },
+      signatures: {
+        orderBy: { signedAt: 'desc' },
       },
     },
   });
 
   if (!request) {
     notFound();
+  }
+
+  const promotedToCompleteReview = await ensureCompleteReviewFromSignatures(request.id, request.status);
+  if (promotedToCompleteReview) {
+    request = {
+      ...request,
+      status: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
+    };
   }
 
   // ── Build documents list ──────────────────────────────────────────────────
@@ -112,10 +129,6 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
     });
   }
 
-  // ── Derived flags ─────────────────────────────────────────────────────────
-  const hasEngagementSlots   = (await prisma.engagementSlot.count()) > 0;
-  const hasBookedEngagement  = request.engagements.length > 0;
-
   // ── Serialise dates for client components ─────────────────────────────────
   const verifierCommentData = request.verifierComment
     ? { ...request.verifierComment, createdAt: request.verifierComment.createdAt.toISOString() }
@@ -126,6 +139,57 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       ...s,
       createdAt: s.createdAt.toISOString(),
     }),
+  );
+
+  const currentUserRoles = new Set(
+    [currentUser?.role, ...(currentUser?.roles ?? [])]
+      .filter(Boolean)
+      .map((role) => String(role).toLowerCase()),
+  );
+  const hasCurrentUserRole = (role: string) => currentUserRoles.has(role);
+  const isReviewerSuggestion = (sourceRole?: string | null) => !sourceRole || sourceRole === 'reviewer';
+  const isWorkingGcpcSuggestion = (sourceRole?: string | null) => sourceRole === 'working_gcpc';
+  const reviewerSuggestions = reviewerSuggestionsData.filter((suggestion) =>
+    isReviewerSuggestion(suggestion.sourceRole),
+  );
+  const workingGcpcSuggestions = reviewerSuggestionsData.filter((suggestion) =>
+    isWorkingGcpcSuggestion(suggestion.sourceRole),
+  );
+  const canSeeReviewerSuggestions =
+    hasCurrentUserRole('reviewer') || hasCurrentUserRole('verifier') || hasCurrentUserRole('admin');
+  const canSeeWorkingGcpcSuggestions =
+    hasCurrentUserRole('working_gcpc') || hasCurrentUserRole('verifier');
+
+  const signatoryMembers = await prisma.signatoryMember.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  const toSignatoryRow = (m: (typeof signatoryMembers)[number]) => ({
+    id: m.id,
+    name: m.name,
+    email: m.email,
+    group: m.group as 'prepared' | 'confirmed',
+    sortOrder: m.sortOrder,
+  });
+
+  const preparedMembers = signatoryMembers.filter((m) => m.group === 'prepared').map(toSignatoryRow);
+  const confirmedMembers = signatoryMembers.filter((m) => m.group === 'confirmed').map(toSignatoryRow);
+
+  const signaturesData = request.signatures.map((s) => ({
+    id: s.id,
+    signatoryMemberId: s.signatoryMemberId,
+    signatoryName: s.signatoryName,
+    signatoryEmail: s.signatoryEmail,
+    type: s.type,
+    signUrl: s.signUrl,
+    signedAt: s.signedAt.toISOString(),
+  }));
+
+  const addDecisionInitialComment =
+    request.verifierComment?.comment ?? request.verifierCommentText ?? null;
+  const addDecisionInitialCode = verifierDecisionCodePrefill(
+    request.verifierComment?.decisionCode,
+    request.verifierDecisionCode
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -311,10 +375,22 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           {/* ── General Review ── */}
           <GeneralReviewSectionClient
             verifierComment={verifierCommentData}
-            reviewerSuggestions={reviewerSuggestionsData}
+            reviewerSuggestions={canSeeReviewerSuggestions ? reviewerSuggestions : []}
+            workingGcpcSuggestions={canSeeWorkingGcpcSuggestions ? workingGcpcSuggestions : []}
             userRole={currentUser?.role}
             userRoles={currentUser?.roles}
             status={request.status}
+          />
+
+          <RequestSignatureSection
+            requestId={request.id}
+            status={request.status}
+            preparedMembers={preparedMembers}
+            confirmedMembers={confirmedMembers}
+            signatures={signaturesData}
+            currentUser={
+              currentUser ? { name: currentUser.name, email: currentUser.email } : null
+            }
           />
 
         </div>
@@ -327,11 +403,12 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           status={request.status}
           requestType={request.requestType}
           isSpecialProject={Boolean(request.rtp?.specialProject)}
-          reviewerSuggestionsCount={reviewerSuggestionsData.length}
+          reviewerSuggestionsCount={reviewerSuggestions.length}
+          workingGcpcSuggestionsCount={workingGcpcSuggestions.length}
           userRole={currentUser?.role}
           userRoles={currentUser?.roles}
-          hasEngagementSlots={hasEngagementSlots}
-          hasBookedEngagement={hasBookedEngagement}
+          initialVerifierComment={addDecisionInitialComment}
+          initialVerifierDecisionCode={addDecisionInitialCode}
         />
       </section>
 

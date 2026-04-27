@@ -69,6 +69,17 @@ model Request {
   verifierDecisionCode String?
   verifiedBy      String?
   verifiedAt      DateTime?
+  reviewConclusionCode1a     Boolean   @default(false)
+  reviewConclusionCode1b     Boolean   @default(false)
+  reviewConclusionCode1bComment String?
+  reviewConclusionCode2      Boolean   @default(false)
+  reviewConclusionCode3      Boolean   @default(false)
+  reviewConclusionCode4      Boolean   @default(false)
+  hocReviewAcceptanceSignUrl        String?
+  hocReviewAcceptanceSignPublicId   String?
+  hocReviewAcceptanceSignedAt       DateTime?
+  hocReviewAcceptanceSignerUserId   String?   @db.ObjectId
+  ackLetterTextContent              String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -80,6 +91,7 @@ model Request {
   verifierComment      VerifierComment?
   reviewerSuggestions  ReviewerSuggestion[]
   engagements          Engagement[]
+  signatures           RequestSignature[]
 
   @@index([requestType, routingType])
   @@index([requestorEmail])
@@ -241,6 +253,7 @@ model ReviewerSuggestion {
   reviewerId String  @db.ObjectId
   reviewerName String?
   suggestion String
+  sourceRole String?
   status    String   @default("pending")
   action    String?
   createdAt DateTime @default(now())
@@ -250,6 +263,7 @@ model ReviewerSuggestion {
 
   @@index([requestId])
   @@index([reviewerId])
+  @@index([sourceRole])
 }
 
 model EngagementSlot {
@@ -291,4 +305,44 @@ model Engagement {
   @@index([engagementNumber])
   @@index([slotId])
   @@index([requestorId])
+}
+
+model SignatoryMember {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  group      String
+  name       String
+  email      String
+  emailLower String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  signatures RequestSignature[]
+
+  @@index([group])
+  @@index([emailLower])
+}
+
+model RequestSignature {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId           String   @db.ObjectId
+  signatoryMemberId   String   @db.ObjectId
+  signatoryName       String
+  signatoryEmail      String
+  signatoryEmailLower String
+  type                String
+  signUrl             String
+  signPublicId        String?
+  signedAt            DateTime @default(now())
+  signerUserId        String   @db.ObjectId
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  request Request         @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  member  SignatoryMember @relation(fields: [signatoryMemberId], references: [id])
+
+  @@unique([requestId, signatoryMemberId])
+  @@index([requestId])
+  @@index([type])
+  @@index([signatoryMemberId])
 }

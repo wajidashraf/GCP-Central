@@ -14,12 +14,14 @@ interface ReviewerSuggestionType {
   id: string;
   reviewerName?: string | null;
   suggestion: string;
+  sourceRole?: string | null;
   createdAt: string | Date;
 }
 
 interface GeneralReviewSectionClientProps {
   verifierComment?: VerifierCommentType | null;
   reviewerSuggestions?: ReviewerSuggestionType[];
+  workingGcpcSuggestions?: ReviewerSuggestionType[];
   userRole?: string;
   userRoles?: string[];
   status: string;
@@ -28,6 +30,7 @@ interface GeneralReviewSectionClientProps {
 export default function GeneralReviewSectionClient({
   verifierComment,
   reviewerSuggestions = [],
+  workingGcpcSuggestions = [],
   status,
   userRole,
   userRoles = [],
@@ -36,6 +39,7 @@ export default function GeneralReviewSectionClient({
     <GeneralReviewSection
       verifierComment={verifierComment}
       reviewerSuggestions={reviewerSuggestions}
+      workingGcpcSuggestions={workingGcpcSuggestions}
       userRole={userRole}
       userRoles={userRoles}
       status={status}
