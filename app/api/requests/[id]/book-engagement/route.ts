@@ -325,7 +325,7 @@ export async function POST(
 
       await prisma.request.update({
         where: { id },
-        data: { status: 'In Review' },
+        data: { status: 'R' },
       });
 
       // Send email notifications to slot attendees

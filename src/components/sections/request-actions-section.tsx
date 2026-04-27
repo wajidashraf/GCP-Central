@@ -35,7 +35,9 @@ export default function RequestActionsSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedStatus = status.trim().toLowerCase();
+  console.log(normalizedStatus);
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
+  console.log(roleSet);
   const hasRole = (role: string) => roleSet.has(role);
   const isAdmin = hasRole('admin');
   const canActAsVerifier = isAdmin || hasRole('verifier');
@@ -43,8 +45,8 @@ export default function RequestActionsSection({
   const canActAsRequestor = isAdmin || hasRole('requestor');
   const isFrOrRs = normalizedStatus === 'fr' || normalizedStatus === 'rs';
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
-  const canReview = canActAsReviewer && normalizedStatus === 'draft review';
-  const canCompleteReview = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'draft review' && !isFrOrRs;
+  const canReview = canActAsReviewer && (normalizedStatus === 'R' ||normalizedStatus === 'r');
+  const canCompleteReview = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'R' && !isFrOrRs;
   const canBookEngagement = canActAsRequestor && ['ready for engagement'].includes(normalizedStatus);
 
   const handleVerifySubmit = async (data: { comment: string; requestStatus: string }) => {
@@ -139,7 +141,7 @@ export default function RequestActionsSection({
               disabled={isSubmitting}
               onClick={handleCompleteReview}
             >
-              {isSubmitting ? 'Completing...' : 'Complete Review'}
+              {isSubmitting ? 'Marking Complete...' : 'Mark Review Complete'}
             </Button>
           )}
 
