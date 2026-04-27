@@ -4,8 +4,22 @@ type RoleAwareUser =
   | CurrentUser
   | {
       role?: string | null;
-      roles?: string[] | null;
+      roles?: string[] | string | null;
     };
+
+function normalizeRoleValue(role: string | null | undefined) {
+  return role?.trim().toLowerCase();
+}
+
+function getUserRoles(user: RoleAwareUser) {
+  const roles = Array.isArray(user.roles)
+    ? user.roles
+    : typeof user.roles === "string"
+      ? user.roles.split(",")
+      : [];
+
+  return [user.role, ...roles].map(normalizeRoleValue).filter(Boolean);
+}
 
 export function hasRole(
   user: RoleAwareUser | null | undefined,
@@ -15,13 +29,5 @@ export function hasRole(
     return false;
   }
 
-  if (user.role === requiredRole) {
-    return true;
-  }
-
-  if (Array.isArray(user.roles)) {
-    return user.roles.includes(requiredRole);
-  }
-
-  return false;
+  return getUserRoles(user).includes(requiredRole);
 }

@@ -258,21 +258,24 @@ model EngagementSlot {
   startTime DateTime
   endTime   DateTime
   attendees String[]
+  location  String?
+  status    String?  @default("available")
   createdBy String   @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   engagements Engagement[]
 
+  @@index([status])
   @@index([createdBy])
 }
 
 model Engagement {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  requestId String   @unique @db.ObjectId
+  requestId String   @db.ObjectId
   slotId    String   @db.ObjectId
   requestorId String @db.ObjectId
-  status    String   @default("booked")
+  status    String   @default("scheduled")
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -280,6 +283,7 @@ model Engagement {
   request Request         @relation(fields: [requestId], references: [id], onDelete: Cascade)
   slot    EngagementSlot @relation(fields: [slotId], references: [id])
 
+  @@index([requestId])
   @@index([slotId])
   @@index([requestorId])
 }

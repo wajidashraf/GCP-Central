@@ -9,6 +9,9 @@ import { useRouter } from 'next/navigation';
 interface RequestActionsSectionProps {
   requestId: string;
   status: string;
+  requestType: string;
+  isSpecialProject?: boolean;
+  reviewerSuggestionsCount?: number;
   userRole?: string;
   userRoles?: string[];
   hasEngagementSlots?: boolean;
@@ -18,6 +21,9 @@ interface RequestActionsSectionProps {
 export default function RequestActionsSection({
   requestId,
   status,
+  requestType,
+  isSpecialProject = false,
+  reviewerSuggestionsCount = 0,
   userRole,
   userRoles = [],
   hasEngagementSlots,
@@ -31,14 +37,17 @@ export default function RequestActionsSection({
   const normalizedStatus = status.trim().toLowerCase();
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
   const hasRole = (role: string) => roleSet.has(role);
-  const canVerify = hasRole('verifier') && ['new', 'submitted', 'under verification', 'pending review', 'in review'].includes(normalizedStatus);
-  const canReview = hasRole('reviewer') && ['in review', 'pending review', 'draft review', 'scheduled'].includes(normalizedStatus);
-  const canBookEngagement = hasRole('requestor')
-    && hasEngagementSlots
-    && !hasBookedEngagement
-    && ['new', 'ready for engagement', 'acknowledged', 'scheduled', 'in review'].includes(normalizedStatus);
+  const isAdmin = hasRole('admin');
+  const canActAsVerifier = isAdmin || hasRole('verifier');
+  const canActAsReviewer = isAdmin || hasRole('reviewer');
+  const canActAsRequestor = isAdmin || hasRole('requestor');
+  const isFrOrRs = normalizedStatus === 'fr' || normalizedStatus === 'rs';
+  const canVerify = canActAsVerifier && normalizedStatus === 'new';
+  const canReview = canActAsReviewer && normalizedStatus === 'draft review';
+  const canCompleteReview = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'draft review' && !isFrOrRs;
+  const canBookEngagement = canActAsRequestor && ['ready for engagement'].includes(normalizedStatus);
 
-  const handleVerifySubmit = async (data: { comment: string; decisionCode: string }) => {
+  const handleVerifySubmit = async (data: { comment: string; requestStatus: string }) => {
     setIsSubmitting(true);
     try {
       const response = await fetch(`/api/requests/${requestId}/verifier-comment`, {
@@ -78,6 +87,27 @@ export default function RequestActionsSection({
     }
   };
 
+  const handleCompleteReview = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/requests/${requestId}/complete-review`, {
+        method: 'POST',
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'Failed to complete review');
+      router.refresh();
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const showActions = canVerify || canReview || canCompleteReview || canBookEngagement;
+  if (!showActions) {
+    return null;
+  }
+
   return (
     <>
       <div className="rounded-lg border border-[var(--border)] bg-white p-5">
@@ -98,7 +128,18 @@ export default function RequestActionsSection({
               size="sm"
               onClick={() => setReviewModalOpen(true)}
             >
-              Review Request Data
+              Review Data
+            </Button>
+          )}
+
+          {canCompleteReview && (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={isSubmitting}
+              onClick={handleCompleteReview}
+            >
+              {isSubmitting ? 'Completing...' : 'Complete Review'}
             </Button>
           )}
 
@@ -119,6 +160,9 @@ export default function RequestActionsSection({
         isOpen={verifyModalOpen}
         onClose={() => setVerifyModalOpen(false)}
         onSubmit={handleVerifySubmit}
+        currentStatus={status}
+        requestType={requestType}
+        isSpecialProject={isSpecialProject}
         isLoading={isSubmitting}
       />
 

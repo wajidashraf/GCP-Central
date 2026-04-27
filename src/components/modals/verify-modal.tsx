@@ -1,18 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Button from '@/src/components/ui/button';
+import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 
-const DECISION_CODES = [
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'resubmit', label: 'Need Resubmission' },
-] as const;
+type StatusOption = { value: string; label: string };
 
 interface VerifyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { comment: string; decisionCode: string }) => Promise<void>;
+  onSubmit: (data: { comment: string; requestStatus: string }) => Promise<void>;
+  currentStatus: string;
+  requestType: string;
+  isSpecialProject?: boolean;
   isLoading?: boolean;
 }
 
@@ -20,11 +20,111 @@ export default function VerifyModal({
   isOpen,
   onClose,
   onSubmit,
+  currentStatus,
+  requestType,
+  isSpecialProject = false,
   isLoading = false,
 }: VerifyModalProps) {
   const [comment, setComment] = useState('');
-  const [decisionCode, setDecisionCode] = useState<string>('approved');
+  const [requestStatus, setRequestStatus] = useState<string>('');
   const [error, setError] = useState('');
+
+  const statusOptions = useMemo<StatusOption[]>(() => {
+    const normalizedRequestType = requestType.trim().toLowerCase();
+    const isRequestType = (...keywords: string[]) =>
+      keywords.some((keyword) => normalizedRequestType.includes(keyword));
+
+    if (isRequestType('registration of tender', 'tender & proposal')) {
+      const rtpOptions: StatusOption[] = [
+        { value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label },
+        { value: REQUEST_STATUS_MAP.RS.label, label: REQUEST_STATUS_MAP.RS.label },
+        { value: REQUEST_STATUS_MAP.NEW.label, label: REQUEST_STATUS_MAP.NEW.label },
+      ];
+      if (isSpecialProject) {
+        rtpOptions.push({ value: REQUEST_STATUS_MAP.W.label, label: REQUEST_STATUS_MAP.W.label });
+      }
+      return rtpOptions;
+    }
+
+    if (isRequestType('prospective bidders list', '(pbl)', 'pbl', 'JV / Partnership', 'jvp', '(jvp)')) {
+      return [
+        { value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label },
+        { value: REQUEST_STATUS_MAP.NEW.label, label: REQUEST_STATUS_MAP.NEW.label },
+        { value: REQUEST_STATUS_MAP.RS.label, label: REQUEST_STATUS_MAP.RS.label },
+        {
+          value: REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
+          label: REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
+        },
+      ];
+    }
+
+    const baseOptions: StatusOption[] = [
+      { value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label },
+      { value: REQUEST_STATUS_MAP.RS.label, label: REQUEST_STATUS_MAP.RS.label },
+      {
+        value: REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
+        label: REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
+      },
+    ];
+
+    const addOption = (option: StatusOption) => {
+      if (!baseOptions.some((item) => item.value === option.value)) {
+        baseOptions.push(option);
+      }
+    };
+
+    if (isSpecialProject) {
+      addOption({ value: REQUEST_STATUS_MAP.W.label, label: REQUEST_STATUS_MAP.W.label });
+    }
+
+    if (
+      isRequestType(
+        'registration of tender',
+        'client - acceptance of award',
+        'revised pcca',
+        'contractual issue',
+        'gcp - others',
+        'revised procurement plan'
+      )
+    ) {
+      const idx = baseOptions.findIndex(
+        (item) => item.value === REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label
+      );
+      if (idx >= 0) baseOptions.splice(idx, 1);
+    }
+
+    if (isRequestType('revised pcca', 'contractual issue', 'gcp - others', 'revised procurement plan')) {
+      addOption({
+        value: REQUEST_STATUS_MAP.PENDING_ACK.label,
+        label: REQUEST_STATUS_MAP.PENDING_ACK.label,
+      });
+    }
+
+    if (isRequestType('monthly information update')) {
+      return [{ value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label }];
+    }
+
+    return baseOptions;
+  }, [isSpecialProject, requestType]);
+
+  const selectableOptions = useMemo<StatusOption[]>(() => {
+    if (!currentStatus) return statusOptions;
+    if (statusOptions.some((item) => item.value === currentStatus)) {
+      return statusOptions;
+    }
+    return [...statusOptions, { value: currentStatus, label: currentStatus }];
+  }, [currentStatus, statusOptions]);
+
+  // Auto-select a valid option whenever the modal opens or options/status change.
+  useEffect(() => {
+    if (selectableOptions.length === 0) return;
+  
+    const matchedOption = selectableOptions.find(
+      (opt) => opt.value.toLowerCase() === currentStatus?.trim().toLowerCase()
+    );
+  
+    setRequestStatus(matchedOption ? matchedOption.value : selectableOptions[0].value);
+  }, [ selectableOptions, currentStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,11 +134,19 @@ export default function VerifyModal({
       setError('Please enter a comment');
       return;
     }
+    if (!requestStatus) {
+      setError('Please select a request status');
+      return;
+    }
+    if (requestStatus.toLowerCase() === REQUEST_STATUS_MAP.NEW.label.toLowerCase()) {
+      setError('Please select a status different from New');
+      return;
+    }
 
     try {
-      await onSubmit({ comment, decisionCode });
+      await onSubmit({ comment, requestStatus });
       setComment('');
-      setDecisionCode('approved');
+      setRequestStatus('');
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit verification');
@@ -51,8 +159,28 @@ export default function VerifyModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-lg">
         <h2 className="mb-4 text-2xl font-bold text-[var(--text)]">Verify Request Data</h2>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="requestStatus" className="mb-2 block text-sm font-medium text-[var(--text)]">
+              Request Status
+            </label>
+            <select
+              id="requestStatus"
+              value={requestStatus}
+              onChange={(e) => setRequestStatus(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-white p-3 text-sm text-[var(--text)] focus:border-[var(--brand-500)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-100)]"
+              disabled={isLoading}
+            >
+              {/* ✅ No placeholder option — first real option is selected by default */}
+              {selectableOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label htmlFor="comment" className="mb-2 block text-sm font-medium text-[var(--text)]">
               Verification Comment
@@ -68,44 +196,15 @@ export default function VerifyModal({
             />
           </div>
 
-          <div>
-            <label className="mb-3 block text-sm font-medium text-[var(--text)]">Decision Code</label>
-            <div className="space-y-2">
-              {DECISION_CODES.map(({ value, label }) => (
-                <label key={value} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="decisionCode"
-                    value={value}
-                    checked={decisionCode === value}
-                    onChange={(e) => setDecisionCode(e.target.value)}
-                    disabled={isLoading}
-                    className="h-4 w-4 cursor-pointer"
-                  />
-                  <span className="text-sm text-[var(--text)]">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
           {error && (
             <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
           )}
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onClose}
-              disabled={isLoading}
-            >
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={isLoading}
-            >
+            <Button type="submit" variant="primary" disabled={isLoading}>
               {isLoading ? 'Submitting...' : 'Submit Verification'}
             </Button>
           </div>

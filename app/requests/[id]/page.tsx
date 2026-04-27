@@ -310,11 +310,11 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
           {/* ── General Review ── */}
           <GeneralReviewSectionClient
-            requestId={request.id}
             verifierComment={verifierCommentData}
             reviewerSuggestions={reviewerSuggestionsData}
             userRole={currentUser?.role}
             userRoles={currentUser?.roles}
+            status={request.status}
           />
 
         </div>
@@ -325,6 +325,9 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
         <RequestActionsSection
           requestId={request.id}
           status={request.status}
+          requestType={request.requestType}
+          isSpecialProject={Boolean(request.rtp?.specialProject)}
+          reviewerSuggestionsCount={reviewerSuggestionsData.length}
           userRole={currentUser?.role}
           userRoles={currentUser?.roles}
           hasEngagementSlots={hasEngagementSlots}

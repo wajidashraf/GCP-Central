@@ -12,9 +12,9 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     
-    if (!user || !hasRole(user, 'reviewer')) {
+    if (!user || (!hasRole(user, 'reviewer') && !hasRole(user, 'admin'))) {
       return NextResponse.json(
-        { error: 'Only reviewers can submit suggestions' },
+        { error: 'Only reviewers and admins can submit suggestions' },
         { status: 403 }
       );
     }

@@ -2,20 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
+import { REQUEST_STATUS } from '@/src/constants/enums/requestStatus';
 
-const ALLOWED_DECISION_CODES = ['approved', 'rejected', 'resubmit'] as const;
-
-function normalizeDecisionCode(value: unknown) {
+function normalizeRequestStatus(value: unknown) {
   if (typeof value !== 'string') {
     return null;
   }
 
   const normalized = value.trim().toLowerCase();
-  if (!ALLOWED_DECISION_CODES.includes(normalized as (typeof ALLOWED_DECISION_CODES)[number])) {
-    return null;
-  }
-
-  return normalized as (typeof ALLOWED_DECISION_CODES)[number];
+  const matched = REQUEST_STATUS.find((status) => status.label.toLowerCase() === normalized);
+  return matched?.label ?? null;
 }
 
 export async function POST(
@@ -25,22 +21,28 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     
-    if (!user || !hasRole(user, 'verifier')) {
+    if (!user || (!hasRole(user, 'verifier') && !hasRole(user, 'admin'))) {
       return NextResponse.json(
-        { error: 'Only verifiers can submit verification comments' },
+        { error: 'Only verifiers and admins can submit verification comments' },
         { status: 403 }
       );
     }
 
     const { id } = await params;
     const body = await request.json();
-    const { comment, decisionCode } = body;
+    const { comment, requestStatus } = body;
     const normalizedComment = typeof comment === 'string' ? comment.trim() : '';
-    const normalizedDecisionCode = normalizeDecisionCode(decisionCode);
+    const normalizedRequestStatus = normalizeRequestStatus(requestStatus);
 
-    if (!normalizedComment || !normalizedDecisionCode) {
+    if (!normalizedComment || !normalizedRequestStatus) {
       return NextResponse.json(
-        { error: 'Comment and decision code are required' },
+        { error: 'Comment and request status are required' },
+        { status: 400 }
+      );
+    }
+    if (normalizedRequestStatus.toLowerCase() === 'new') {
+      return NextResponse.json(
+        { error: 'Please select a status different from New' },
         { status: 400 }
       );
     }
@@ -62,14 +64,14 @@ export async function POST(
       where: { requestId: id },
       update: {
         comment: normalizedComment,
-        decisionCode: normalizedDecisionCode,
+        decisionCode: normalizedRequestStatus,
         verifiedBy: user.name,
       },
       create: {
         requestId: id,
         verifierId: user.id,
         comment: normalizedComment,
-        decisionCode: normalizedDecisionCode,
+        decisionCode: normalizedRequestStatus,
         verifiedBy: user.name,
       },
     });
@@ -78,9 +80,9 @@ export async function POST(
     await prisma.request.update({
       where: { id },
       data: {
-        status: normalizedDecisionCode === 'approved' ? 'Acknowledged' : 'Resubmit',
+        status: normalizedRequestStatus,
         verifierCommentText: normalizedComment,
-        verifierDecisionCode: normalizedDecisionCode,
+        verifierDecisionCode: normalizedRequestStatus,
         verifiedBy: user.name,
         verifiedAt: new Date(),
       },

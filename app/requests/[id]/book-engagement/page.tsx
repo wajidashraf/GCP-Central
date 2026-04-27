@@ -10,6 +10,7 @@ interface Slot {
   startTime: string;
   endTime: string;
   attendees: string[];
+  status?: string | null;
 }
 
 export default function BookEngagementPage() {
@@ -32,8 +33,19 @@ export default function BookEngagementPage() {
     try {
       const response = await fetch('/api/admin/engagement-slots');
       if (response.ok) {
-        const data = await response.json();
-        setSlots(data);
+        const data: Slot[] = await response.json();
+
+        const now = new Date();
+        const oneMonthLater = new Date();
+        oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+
+        const filtered = data.filter((slot) => {
+          const start = new Date(slot.startTime);
+          const isAvailable = !slot.status || slot.status === 'available';
+          return isAvailable && start >= now && start <= oneMonthLater;
+        });
+
+        setSlots(filtered);
       } else {
         setError('Failed to fetch slots');
       }
@@ -111,10 +123,10 @@ export default function BookEngagementPage() {
 
             {slots.length > 0 ? (
               <div className="space-y-3">
-                {slots.map(slot => (
+                {slots.map((slot) => (
                   <label
                     key={slot.id}
-                    className="flex items-start gap-3 rounded-lg border border-[var(--border)] p-4 hover:bg-gray-50"
+                    className="flex items-start gap-3 rounded-lg border border-[var(--border)] p-4 hover:bg-gray-50 cursor-pointer"
                   >
                     <input
                       type="radio"
@@ -129,7 +141,8 @@ export default function BookEngagementPage() {
                       <div className="font-semibold text-[var(--text)]">{slot.slotName}</div>
                       <div className="mt-1 text-sm text-[var(--text-muted)]">
                         <div>
-                          Start: {new Date(slot.startTime).toLocaleString('en-GB', {
+                          Start:{' '}
+                          {new Date(slot.startTime).toLocaleString('en-GB', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
@@ -138,7 +151,8 @@ export default function BookEngagementPage() {
                           })}
                         </div>
                         <div>
-                          End: {new Date(slot.endTime).toLocaleString('en-GB', {
+                          End:{' '}
+                          {new Date(slot.endTime).toLocaleString('en-GB', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
@@ -146,9 +160,7 @@ export default function BookEngagementPage() {
                             minute: '2-digit',
                           })}
                         </div>
-                        <div className="mt-1">
-                          Reviewers: {slot.attendees.length}
-                        </div>
+                        <div className="mt-1">Reviewers: {slot.attendees.length}</div>
                       </div>
                     </div>
                   </label>
@@ -156,7 +168,7 @@ export default function BookEngagementPage() {
               </div>
             ) : (
               <div className="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-700">
-                No slots available. Please contact the admin to create slots.
+                No available slots in the next 30 days. Please contact the admin to create slots.
               </div>
             )}
           </div>
@@ -177,9 +189,7 @@ export default function BookEngagementPage() {
           </div>
 
           {error && (
-            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              {error}
-            </div>
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</div>
           )}
 
           <div className="flex justify-end gap-2 pt-4">

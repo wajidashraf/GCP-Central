@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { SectionTitle } from './request-form-shared';
+import ReviewerSuggestionsModal from '@/src/components/modals/reviewer-suggestions-modal';
 
 interface VerifierCommentType {
   id: string;
@@ -24,45 +25,20 @@ interface GeneralReviewSectionProps {
   reviewerSuggestions?: ReviewerSuggestionType[];
   userRole?: string;
   userRoles?: string[];
-  onUpdateSuggestion?: (suggestionId: string, action: string) => Promise<void>;
+  status: string;
 }
-
-const ACTION_OPTIONS = [
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'no_need', label: 'No Need' },
-  { value: 'pending', label: 'Pending' },
-] as const;
 
 export default function GeneralReviewSection({
   verifierComment,
   reviewerSuggestions = [],
   userRole,
   userRoles = [],
-  onUpdateSuggestion,
+  status,
 }: GeneralReviewSectionProps) {
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
+  const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
 
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
-  const canManageSuggestions = roleSet.has('verifier') || roleSet.has('admin');
-
-  const getActionLabel = (value?: string | null) => {
-    if (!value) return 'Select Action';
-    if (value === 'no_need') return 'No Need';
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  };
-
-  const handleActionSelect = async (suggestionId: string, action: string) => {
-    if (!onUpdateSuggestion) return;
-    
-    setUpdating(suggestionId);
-    try {
-      await onUpdateSuggestion(suggestionId, action);
-      setActiveDropdown(null);
-    } finally {
-      setUpdating(null);
-    }
-  };
+  const canSeeSuggestions = roleSet.has('reviewer') || roleSet.has('verifier') || roleSet.has('admin');
 
   if (!verifierComment && reviewerSuggestions.length === 0) {
     return null;
@@ -71,91 +47,44 @@ export default function GeneralReviewSection({
   return (
     <div>
       <SectionTitle title="General Review" />
-      
+
       <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
         <div className="space-y-5">
-        {/* Verifier Comment Section */}
-        {verifierComment && (
-          <div className="rounded-lg bg-blue-50 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-blue-900">Verifier Comment</span>
-              <span className="text-xs text-blue-700">
-                by {verifierComment.verifiedBy} • {new Date(verifierComment.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-[var(--text)]">{verifierComment.comment}</p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs font-medium uppercase text-blue-700">Decision:</span>
-              <span className={`inline-block rounded px-2 py-1 text-xs font-semibold ${
-                verifierComment.decisionCode === 'approved'
-                  ? 'bg-green-100 text-green-700'
-                  : verifierComment.decisionCode === 'rejected'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-yellow-100 text-yellow-700'
-              }`}>
-                {verifierComment.decisionCode.charAt(0).toUpperCase() + verifierComment.decisionCode.slice(1)}
-              </span>
-            </div>
-          </div>
-        )}
+          {/* Verifier Comment Section */}
+          {verifierComment && (
+            <div className="rounded-lg bg-blue-50 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-blue-900">Verifier Comment</span>
+                <span className="text-xs text-blue-700">
+                  by {verifierComment.verifiedBy} • {new Date(verifierComment.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap text-sm text-[var(--text)]">{verifierComment.comment}</p>
 
-        {/* Reviewer Suggestions Section */}
-        {reviewerSuggestions.length > 0 && (
-          <div>
-            <h4 className="mb-3 text-sm font-semibold text-[var(--text)]">Reviewer Notifications</h4>
-            <div className="space-y-3">
-              {reviewerSuggestions.map((suggestion) => (
-                <div key={suggestion.id} className="rounded-lg bg-gray-50 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-900">
-                      Reviewer Suggestion {suggestion.reviewerName ? `· ${suggestion.reviewerName}` : ''}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      {new Date(suggestion.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <p className="mb-3 whitespace-pre-wrap text-sm text-[var(--text)]">{suggestion.suggestion}</p>
-                  
-                  {canManageSuggestions && (
-                    <div className="relative inline-block">
-                      <button
-                        type="button"
-                        onClick={() => setActiveDropdown(activeDropdown === suggestion.id ? null : suggestion.id)}
-                        disabled={updating === suggestion.id}
-                        className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        {getActionLabel(suggestion.action)}
-                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      </button>
-
-                      {activeDropdown === suggestion.id && (
-                        <div className="absolute top-full left-0 z-10 mt-1 w-48 rounded-lg border border-[var(--border)] bg-white shadow-lg">
-                          {ACTION_OPTIONS.map(({ value, label }) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => handleActionSelect(suggestion.id, value)}
-                              className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg"
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!canManageSuggestions && suggestion.action && (
-                    <span className="inline-block rounded px-2 py-1 text-xs font-semibold bg-gray-200 text-gray-700">
-                      {getActionLabel(suggestion.action)}
-                    </span>
-                  )}
-                </div>
-              ))}
             </div>
-          </div>
-        )}        </div>      </div>
+          )}
+
+          {/* Reviewer Suggestions Section */}
+          {reviewerSuggestions.length > 0 && canSeeSuggestions && status === 'draft review' && (
+            <div className="flex justify-end">
+               <button
+                  type="button"
+                  onClick={() => setIsSuggestionsModalOpen(true)}
+                  aria-describedby="reviewer-suggestions-tooltip"
+                  className="animate-pulse-soft rounded-md border border-[#7A4D00] bg-[#F2CB7A] px-2 py-1 text-xs font-semibold text-[#3D2600] shadow-sm transition-colors duration-200 hover:bg-[#E6AC40]"
+                >
+                  ({reviewerSuggestions.length}) Reviewer Suggestions
+                </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ReviewerSuggestionsModal
+        isOpen={isSuggestionsModalOpen}
+        onClose={() => setIsSuggestionsModalOpen(false)}
+        suggestions={reviewerSuggestions}
+      />
     </div>
   );
 }
