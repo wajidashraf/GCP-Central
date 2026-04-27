@@ -524,11 +524,5 @@ export async function GET(request: Request) {
 */
 
 export default function ExampleGuide() {
-  return (
-    <div>
-      <h1>Nodemailer Integration Examples</h1>
-      <p>This file contains practical examples commented out.</p>
-      <p>Uncomment and adapt the examples for your use case.</p>
-    </div>
-  );
+  return null;
 }

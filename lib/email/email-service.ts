@@ -73,8 +73,8 @@ function getTransporter(): nodemailer.Transporter {
  * Format email recipients into Nodemailer format
  */
 function formatRecipients(
-  recipients: string | string[] | EmailRecipient | EmailRecipient[]
-): string | { name: string; address: string }[] | undefined {
+  recipients: string | string[] | EmailRecipient | EmailRecipient[] | undefined
+): string | { name: string; address: string } | { name: string; address: string }[] | undefined {
   if (!recipients) return undefined;
 
   // Handle single string email
