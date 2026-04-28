@@ -2,18 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { buildNextProjectCode } from "@/lib/project-code";
+import { ensureProjectCode } from "@/lib/project-code";
 import prisma from "@/lib/prisma";
 import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
 import { buildNextRequestNo } from "@/lib/request-no";
 import {
-  createRtpBaseRequestSchema,
-  saveRtpDetailsSchema,
-  submitRtpRequestSchema,
-  type CreateRtpBaseRequestInput,
-  type SaveRtpDetailsInput,
-  type SubmitRtpRequestInput,
-} from "@/lib/validations/rtp";
+  createRppBaseRequestSchema,
+  saveRppDetailsSchema,
+  submitRppRequestSchema,
+  type CreateRppBaseRequestInput,
+  type SaveRppDetailsInput,
+  type SubmitRppRequestInput,
+} from "@/lib/validations/rpp";
 
 type FieldErrors = Record<string, string[]>;
 
@@ -25,23 +25,10 @@ function getFieldErrors(error: z.ZodError) {
   return error.flatten().fieldErrors;
 }
 
-function parseDateInput(value?: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const parsedDate = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return null;
-  }
-
-  return parsedDate;
-}
-
-export async function createRtpBaseRequest(
-  input: CreateRtpBaseRequestInput
+export async function createRppBaseRequest(
+  input: CreateRppBaseRequestInput
 ): Promise<ActionResult<{ requestId: string; requestNo: string }>> {
-  const validatedInput = createRtpBaseRequestSchema.safeParse(input);
+  const validatedInput = createRppBaseRequestSchema.safeParse(input);
   if (!validatedInput.success) {
     return {
       success: false,
@@ -95,7 +82,7 @@ export async function createRtpBaseRequest(
 
       return {
         success: false,
-        message: "Failed to create RTP base request.",
+        message: "Failed to create RPP base request.",
       };
     }
   }
@@ -106,10 +93,18 @@ export async function createRtpBaseRequest(
   };
 }
 
-export async function saveRtpDetails(
-  input: SaveRtpDetailsInput
-): Promise<ActionResult<{ projectId: string }>> {
-  const validatedInput = saveRtpDetailsSchema.safeParse(input);
+export async function saveRppDetails(
+  input: SaveRppDetailsInput
+): Promise<
+  ActionResult<{
+    projectId: string;
+    projectCode: string;
+    companyId: string;
+    companyCode: string;
+    companyName: string;
+  }>
+> {
+  const validatedInput = saveRppDetailsSchema.safeParse(input);
   if (!validatedInput.success) {
     return {
       success: false,
@@ -121,17 +116,29 @@ export async function saveRtpDetails(
   const payload = validatedInput.data;
 
   try {
-    const request = await prisma.request.findUnique({
-      where: { id: payload.requestId },
-      select: {
-        id: true,
-        routingType: true,
-        requestType: true,
-        companyId: true,
-        companyCode: true,
-        companyName: true,
-      },
-    });
+    const [request, project] = await Promise.all([
+      prisma.request.findUnique({
+        where: { id: payload.requestId },
+        select: {
+          id: true,
+          routingType: true,
+          requestType: true,
+          companyId: true,
+          companyCode: true,
+          companyName: true,
+        },
+      }),
+      prisma.project.findUnique({
+        where: { id: payload.projectId },
+        select: {
+          id: true,
+          projectCode: true,
+          companyId: true,
+          companyCode: true,
+          companyName: true,
+        },
+      }),
+    ]);
 
     if (!request) {
       return {
@@ -140,78 +147,29 @@ export async function saveRtpDetails(
       };
     }
 
-    if (
-      request.companyId !== payload.companyId ||
-      request.companyCode !== payload.companyCode ||
-      request.companyName !== payload.companyName
-    ) {
+    if (!project) {
       return {
         success: false,
-        message: "Company information does not match the base request.",
+        message: "Selected project was not found.",
+        fieldErrors: { projectId: ["Please select a valid project"] },
       };
     }
 
-    const tenderClosingDate = parseDateInput(payload.tenderClosingDate);
-    if (payload.tenderClosingDate && !tenderClosingDate) {
-      return {
-        success: false,
-        message: "Tender closing date is invalid.",
-        fieldErrors: { tenderClosingDate: ["Please provide a valid tender closing date"] },
-      };
+    let projectCode = project.projectCode?.trim() || payload.projectCode?.trim() || "";
+    if (!projectCode) {
+      projectCode = await ensureProjectCode(project.id);
     }
 
-    const existingRtp = await prisma.rtpRequest.findUnique({
-      where: { requestId: payload.requestId },
-      select: { projectId: true },
-    });
-
-    let projectId = existingRtp?.projectId ?? null;
-
-    if (projectId) {
-      await prisma.project.update({
-        where: { id: projectId },
-        data: {
-          projectName: payload.projectName,
-          projectStatus: "Inactive",
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-        },
-      });
-    } else {
-      const projectCode = await buildNextProjectCode();
-      const project = await prisma.project.create({
-        data: {
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          projectStatus: "Inactive",
-          projectName: payload.projectName,
-          projectCode,
-          createdFromRequestId: payload.requestId,
-        },
-      });
-      projectId = project.id;
-    }
-
-    await prisma.rtpRequest.upsert({
+    await prisma.rppRequest.upsert({
       where: { requestId: payload.requestId },
       create: {
         requestId: payload.requestId,
-        clientName: payload.clientName,
-        registrationType: payload.registrationType,
-        tenderClosingDate,
-        projectName: payload.projectName,
-        projectDescription: payload.projectDescription,
-        projectId,
+        projectId: project.id,
+        projectCode: projectCode || null,
       },
       update: {
-        clientName: payload.clientName,
-        registrationType: payload.registrationType,
-        tenderClosingDate,
-        projectName: payload.projectName,
-        projectDescription: payload.projectDescription,
-        projectId,
+        projectId: project.id,
+        projectCode: projectCode || null,
       },
     });
 
@@ -228,21 +186,25 @@ export async function saveRtpDetails(
     return {
       success: true,
       data: {
-        projectId,
+        projectId: project.id,
+        projectCode,
+        companyId: project.companyId,
+        companyCode: project.companyCode,
+        companyName: project.companyName,
       },
     };
   } catch {
     return {
       success: false,
-      message: "Failed to save RTP project details.",
+      message: "Failed to save RPP project details.",
     };
   }
 }
 
-export async function submitRtpRequest(
-  input: SubmitRtpRequestInput
+export async function submitRppRequest(
+  input: SubmitRppRequestInput
 ): Promise<ActionResult<{ requestId: string; requestNo: string }>> {
-  const validatedInput = submitRtpRequestSchema.safeParse(input);
+  const validatedInput = submitRppRequestSchema.safeParse(input);
   if (!validatedInput.success) {
     return {
       success: false,
@@ -254,7 +216,7 @@ export async function submitRtpRequest(
   const payload = validatedInput.data;
 
   try {
-    const [request, rtp] = await Promise.all([
+    const [request, rpp] = await Promise.all([
       prisma.request.findUnique({
         where: { id: payload.requestId },
         select: {
@@ -264,13 +226,11 @@ export async function submitRtpRequest(
           routingType: true,
         },
       }),
-      prisma.rtpRequest.findUnique({
+      prisma.rppRequest.findUnique({
         where: { requestId: payload.requestId },
         select: {
           id: true,
           projectId: true,
-          projectName: true,
-          clientName: true,
         },
       }),
     ]);
@@ -278,29 +238,21 @@ export async function submitRtpRequest(
     if (!request) {
       return {
         success: false,
-        message: "Request was not found. Please restart the RTP form.",
+        message: "Request was not found. Please restart the RPP form.",
       };
     }
 
-    if (!rtp) {
+    if (!rpp || !rpp.projectId) {
       return {
         success: false,
-        message: "Project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    if (!rtp.projectId || !rtp.projectName || !rtp.clientName) {
-      return {
-        success: false,
-        message: "RTP details are incomplete. Please review Step 2 and try again.",
+        message: "RPP project details are missing. Complete Step 2 first.",
       };
     }
 
     await prisma.$transaction([
-      prisma.rtpRequest.update({
+      prisma.rppRequest.update({
         where: { requestId: payload.requestId },
         data: {
-          specialProject: payload.specialProject ?? false,
           documentUrl: payload.documentUrl,
           documentPublicId: payload.documentPublicId,
           documentFileName: payload.documentFileName,
@@ -332,7 +284,7 @@ export async function submitRtpRequest(
   } catch {
     return {
       success: false,
-      message: "Failed to submit RTP request.",
+      message: "Failed to submit RPP request.",
     };
   }
 }

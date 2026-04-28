@@ -35,15 +35,11 @@ export default function VerifyModal({
       keywords.some((keyword) => normalizedRequestType.includes(keyword));
 
     if (isRequestType('registration of tender', 'tender & proposal')) {
-      const rtpOptions: StatusOption[] = [
+      return [
         { value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label },
         { value: REQUEST_STATUS_MAP.RS.label, label: REQUEST_STATUS_MAP.RS.label },
-        { value: REQUEST_STATUS_MAP.NEW.label, label: REQUEST_STATUS_MAP.NEW.label },
+        { value: REQUEST_STATUS_MAP.W.label, label: REQUEST_STATUS_MAP.W.label },
       ];
-      if (isSpecialProject) {
-        rtpOptions.push({ value: REQUEST_STATUS_MAP.W.label, label: REQUEST_STATUS_MAP.W.label });
-      }
-      return rtpOptions;
     }
 
     if (isRequestType('prospective bidders list', '(pbl)', 'pbl', 'JV / Partnership', 'jvp', '(jvp)')) {

@@ -42,6 +42,12 @@ export default function RequestActionsSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedStatus = status.trim().toLowerCase();
+  const normalizedRequestType = requestType.trim().toLowerCase();
+  const isRtpRequest =
+    normalizedRequestType === 'rtp' ||
+    normalizedRequestType.includes('registration of tender') ||
+    normalizedRequestType.includes('tender & proposal');
+  const isClosedRtpStatus = isRtpRequest && ['fr', 'rs', 'w'].includes(normalizedStatus);
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
   const hasRole = (role: string) => roleSet.has(role);
   const isAdmin = hasRole('admin');
@@ -145,6 +151,10 @@ export default function RequestActionsSection({
     setReviewSourceRole(sourceRole);
     setReviewModalOpen(true);
   };
+
+  if (isClosedRtpStatus) {
+    return null;
+  }
 
   const showActions =
     canVerify ||

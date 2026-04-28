@@ -60,6 +60,7 @@ export const ProjectSchema = new Schema({
   companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
   companyCode: { type: String, required: true },
   companyName: { type: String, required: true },
+  projectStatus: { type: String, default: 'Inactive' },
   projectName: { type: String, required: true },
   projectCode: { type: String },
   createdFromRequestId: { type: Schema.Types.ObjectId, ref: 'Request' },
@@ -138,6 +139,19 @@ export const JvpRequestSchema = new Schema({
 }, { timestamps: true });
 
 export const JvpRequest = models.JvpRequest || mongoose.model('JvpRequest', JvpRequestSchema);
+
+export const RppRequestSchema = new Schema({
+  requestId: { type: Schema.Types.ObjectId, ref: 'Request', required: true, unique: true },
+  projectId: { type: Schema.Types.ObjectId, ref: 'Project', required: true },
+  projectCode: { type: String },
+  documentUrl: { type: String },
+  documentPublicId: { type: String },
+  documentFileName: { type: String },
+  documentMimeType: { type: String },
+  documentSizeBytes: { type: Number },
+}, { timestamps: true });
+
+export const RppRequest = models.RppRequest || mongoose.model('RppRequest', RppRequestSchema);
 
 export const PblBidderSchema = new Schema({
   pblRequestId: { type: Schema.Types.ObjectId, ref: 'PblRequest', required: true },

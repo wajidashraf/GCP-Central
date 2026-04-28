@@ -1,7 +1,7 @@
 ﻿import Link from 'next/link';
 
 const GCPC_FORMS = ['RTP', 'PBL', 'JVP', 'ST/SP', 'CAA', 'PCCA', 'PP', 'VAP', 'Others'];
-const GCP_FORMS = ['R-PCCA', 'CI', 'CPR', 'Others'];
+const GCP_FORMS = ['RPP', 'R-PCCA', 'CI', 'CPR', 'Others'];
 
 export default function AppFooter() {
   return (

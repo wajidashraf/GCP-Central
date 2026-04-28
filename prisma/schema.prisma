@@ -87,6 +87,7 @@ model Request {
   rtp                  RtpRequest?
   pbl                  PblRequest?
   jvp                  JvpRequest?
+  rpp                  RppRequest?
   projects             Project[]
   verifierComment      VerifierComment?
   reviewerSuggestions  ReviewerSuggestion[]
@@ -103,6 +104,7 @@ model Project {
   companyId            String   @db.ObjectId
   companyCode          String
   companyName          String
+  projectStatus        String   @default("Inactive")
   projectName          String
   projectCode          String?
   createdFromRequestId String?  @db.ObjectId
@@ -114,9 +116,11 @@ model Project {
   rtpRequests RtpRequest[]
   pblRequests PblRequest[]
   jvpRequests JvpRequest[]
+  rppRequests RppRequest[]
 
   @@index([companyId])
   @@index([createdFromRequestId])
+  @@index([projectStatus])
   @@index([projectName])
   @@index([projectCode])
 }
@@ -207,6 +211,25 @@ model JvpRequest {
   documentSizeBytes           Int?
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model RppRequest {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId         String   @unique @db.ObjectId
+  projectId         String   @db.ObjectId
+  projectCode       String?
+  documentUrl       String?
+  documentPublicId  String?
+  documentFileName  String?
+  documentMimeType  String?
+  documentSizeBytes Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   request Request @relation(fields: [requestId], references: [id])
   project Project @relation(fields: [projectId], references: [id])

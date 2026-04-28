@@ -150,34 +150,11 @@ export async function savePblDetails(
       };
     }
 
-    if (
-      request.companyId !== payload.companyId ||
-      request.companyCode !== payload.companyCode ||
-      request.companyName !== payload.companyName
-    ) {
-      return {
-        success: false,
-        message: "Company information does not match the base request.",
-      };
-    }
-
     if (!project) {
       return {
         success: false,
         message: "Selected project was not found.",
         fieldErrors: { projectId: ["Please select a valid project"] },
-      };
-    }
-
-    if (
-      project.companyId !== payload.companyId ||
-      project.companyCode !== payload.companyCode ||
-      project.companyName !== payload.companyName
-    ) {
-      return {
-        success: false,
-        message: "Selected project does not belong to the selected company.",
-        fieldErrors: { projectId: ["Please select a project from your company"] },
       };
     }
 

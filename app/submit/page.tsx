@@ -14,6 +14,7 @@ const GCPC_FORMS = [
 ];
 
 const GCP_FORMS = [
+  { code: 'RPP', label: 'Revised Procurement Plan' },
   { code: 'R-PCCA', label: 'Revised Post-Contract Cost Analysis' },
   { code: 'CI', label: 'Contractual Issues' },
   { code: 'CPR', label: 'Contract Progress Report' },
@@ -82,7 +83,7 @@ export default function SubmitPage() {
               </p>
               <h2 className="mt-1 text-lg font-semibold text-[var(--text)]">Group Contract Procurement</h2>
             </div>
-            <span className="badge badge--info">4 forms</span>
+            <span className="badge badge--info">5 forms</span>
           </div>
           <ul className="space-y-2">
             {GCP_FORMS.map((form) => (
