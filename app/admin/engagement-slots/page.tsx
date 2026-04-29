@@ -202,6 +202,9 @@ export default function EngagementSlotsPage() {
 
   return (
     <div className="space-y-6">
+      <Button href={`/admin`} variant="secondary" size="sm">
+            Back
+          </Button>
       <header className="page-header sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="page-title">Engagement Slots</h1>

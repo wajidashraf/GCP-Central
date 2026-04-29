@@ -117,6 +117,17 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
           companyName: true,
         },
       });
+      const companies = await prisma.company.findMany({
+        orderBy: {
+          companyName: 'asc',
+        },
+        select: {
+          id: true,
+          companyName: true,
+          companyCode: true,
+          sector: true,
+        },
+      });
 
       return (
         <div className="space-y-6">
@@ -138,6 +149,11 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               companyCode: fallbackCompany.companyCode,
               companyName: fallbackCompany.companyName,
             }}
+            companies={companies.map((company: typeof companies[number]) => ({
+              ...company,
+              companyCode: company.companyCode ?? '',
+              sector: company.sector ?? '',
+            }))}
             projects={projects.map((project: typeof projects[number]) => ({
               ...project,
               projectCode: project.projectCode ?? '',

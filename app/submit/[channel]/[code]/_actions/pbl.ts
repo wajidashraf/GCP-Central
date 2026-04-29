@@ -244,8 +244,8 @@ export async function savePblBidders(
           location: bidder.location?.trim() || null,
           personInCharge: bidder.personInCharge.trim(),
           picContactNumber: bidder.picContactNumber.trim(),
-          sourcesFrom: bidder.sourcesFrom.trim(),
-          recommendationBy: bidder.recommendationBy.trim(),
+          sourcesFrom: bidder.sourcesFrom?.trim() || "",
+          recommendationBy: bidder.recommendationBy?.trim() || "",
         },
       })
     );

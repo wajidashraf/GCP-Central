@@ -7,7 +7,6 @@ import {
   SectionTitle,
   DetailItem,
   formatDateTime,
-  stringifyJson,
   STATUS_BADGE_CLASS_MAP,
 } from '@/src/components/sections/request-form-shared';
 import prisma from '@/lib/prisma';
@@ -16,6 +15,8 @@ import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { ensureCompleteReviewFromSignatures } from '@/src/lib/requests/ensure-complete-review-from-signatures';
 import { REGISTRATION_TYPES } from '@/src/constants/enums/procurement';
+import { PROCUREMENT_METHODS } from '@/src/constants/enums/procurement';
+import ImagePreviewTrigger from '@/src/components/sections/image-preview-trigger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,82 @@ function verifierDecisionCodePrefill(
 ): string | null {
   const raw = (relationCode ?? requestScalar ?? '').trim();
   return /^[1-5]$/.test(raw) ? raw : null;
+}
+
+function getRtpNumberOfDaysAfterTenderClosingDate(
+  rtp: unknown
+): number | string | null {
+  if (!rtp || typeof rtp !== 'object') {
+    return null;
+  }
+
+  const value = (rtp as { numberOfDaysAfterTenderClosingDate?: unknown })
+    .numberOfDaysAfterTenderClosingDate;
+
+  return typeof value === 'number' || typeof value === 'string' ? value : null;
+}
+
+function getRtpValidityPeriod(rtp: unknown): Date | null {
+  if (!rtp || typeof rtp !== 'object') {
+    return null;
+  }
+
+  const value = (rtp as { validityPeriod?: unknown }).validityPeriod;
+  return value instanceof Date ? value : null;
+}
+
+function getRequestReviewerComment(requestRow: unknown): string | null {
+  if (!requestRow || typeof requestRow !== 'object') return null;
+  const value = (requestRow as { reviewerCommentText?: unknown }).reviewerCommentText;
+  return typeof value === 'string' ? value : null;
+}
+
+function getRequestReviewerDecisionCode(requestRow: unknown): string | null {
+  if (!requestRow || typeof requestRow !== 'object') return null;
+  const value = (requestRow as { reviewerDecisionCode?: unknown }).reviewerDecisionCode;
+  return typeof value === 'string' ? value : null;
+}
+
+function isLikelyUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function isLikelyImageUrl(value: string) {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(value.trim());
+}
+
+function getDisplayFileNameFromUrl(value: string) {
+  try {
+    const parsedUrl = new URL(value);
+    const segments = parsedUrl.pathname.split('/').filter(Boolean);
+    return decodeURIComponent(segments[segments.length - 1] ?? 'Attachment');
+  } catch {
+    return 'Attachment';
+  }
+}
+
+function renderPointValue(point: unknown) {
+  const value = typeof point === 'string' ? point.trim() : JSON.stringify(point);
+  if (!isLikelyUrl(value)) {
+    return <span>{value}</span>;
+  }
+
+  if (isLikelyImageUrl(value)) {
+    return (
+      <ImagePreviewTrigger imageUrl={value} alt="Field attachment preview" />
+    );
+  }
+
+  return (
+    <a
+      href={value}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:bg-[var(--surface-soft)]"
+    >
+      Preview file: {getDisplayFileNameFromUrl(value)}
+    </a>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -82,7 +159,6 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
   if (!request) {
     notFound();
   }
-  console.log('request', request);
 
   const promotedToCompleteReview = await ensureCompleteReviewFromSignatures(request.id, request.status);
   if (promotedToCompleteReview) {
@@ -116,20 +192,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       fileName: request.jvp.documentFileName,
     });
   }
-  if (request.jvp?.cashflowForecastUrl) {
-    documents.push({
-      label: 'JVP Cashflow Forecast',
-      url: request.jvp.cashflowForecastUrl,
-      fileName: request.jvp.cashflowForecastFileName,
-    });
-  }
-  if (request.jvp?.costStructureUrl) {
-    documents.push({
-      label: 'JVP Cost Structure',
-      url: request.jvp.costStructureUrl,
-      fileName: request.jvp.costStructureFileName,
-    });
-  }
+  // JVP cashflow and cost structure are field-level attachments and rendered in JVP detail section.
 
   // ── Serialise dates for client components ─────────────────────────────────
   const verifierCommentData = request.verifierComment
@@ -183,6 +246,16 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       (item) => item.value === request.rtp?.registrationType
     )?.label : '—';
 
+  const procurementMethodLabel =
+    request.pbl ? PROCUREMENT_METHODS.find(
+      (item) => item.value === request.pbl?.procurementMethod
+    )?.label : '—';
+  // Guard access to newly added RTP fields when generated Prisma types are stale in IDE.
+  const rtpNumberOfDaysAfterTenderClosingDate = getRtpNumberOfDaysAfterTenderClosingDate(
+    request.rtp
+  );
+  const rtpValidityPeriod = getRtpValidityPeriod(request.rtp);
+
   const signaturesData = request.signatures.map((s) => ({
     id: s.id,
     signatoryMemberId: s.signatoryMemberId,
@@ -194,9 +267,9 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
   }));
 
   const addDecisionInitialComment =
-    request.verifierComment?.comment ?? request.verifierCommentText ?? null;
+    getRequestReviewerComment(request) ?? request.verifierComment?.comment ?? request.verifierCommentText ?? null;
   const addDecisionInitialCode = verifierDecisionCodePrefill(
-    request.verifierComment?.decisionCode,
+    getRequestReviewerDecisionCode(request) ?? request.verifierComment?.decisionCode,
     request.verifierDecisionCode
   );
 
@@ -270,9 +343,9 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                 <DetailItem label="Tender Closing Date" value={formatDateTime(request.rtp.tenderClosingDate)} />
                 <DetailItem
                   label="No. of Days"
-                  value={request.rtp.numberOfDaysAfterTenderClosingDate ?? '—'}
+                  value={rtpNumberOfDaysAfterTenderClosingDate ?? '—'}
                 />
-                <DetailItem label="Validity Period" value={formatDateTime(request.rtp.validityPeriod)} />
+                <DetailItem label="Validity Period" value={formatDateTime(rtpValidityPeriod)} />
                 <DetailItem label="Special Project" value={request.rtp.specialProject ? 'Yes' : 'No'} />
               </dl>
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
@@ -295,24 +368,24 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   label="Project"
                   value={
                     request.pbl.project.projectCode
-                      ? `${request.pbl.project.projectName} (${request.pbl.project.projectCode})`
+                      ? `${request.pbl.project.projectName}`
                       : request.pbl.project.projectName
                   }
                 />
                 <DetailItem label="Project Code" value={request.pbl.projectCode || '—'} />
-                <DetailItem label="Procurement Method" value={request.pbl.procurementMethod} />
+                <DetailItem label="Procurement Method" value={procurementMethodLabel} />
               </dl>
               {request.pbl?.justificationForLessBidders && (
-              <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                  Justification For Less Bidders
-                </p>
-                
+                <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Justification For Less Bidders
+                  </p>
+
                   <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
                     {request.pbl.justificationForLessBidders}
                   </p>
-              </div>
-                )}
+                </div>
+              )}
               <div className="mt-3">
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Bidders
@@ -371,22 +444,183 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                 <DetailItem label="Costing & Estimation PIC" value={request.jvp.costingAndEstimationMatters || '—'} />
                 <DetailItem label="Implementation Stage" value={request.jvp.implementationStage || '—'} />
               </dl>
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-3 ">
                 <div className="rounded-lg border border-[var(--border)] bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Background of Collaboration
                   </p>
-                  <pre className="mt-1 overflow-x-auto text-xs text-[var(--text)]">
-                    {stringifyJson(request.jvp.backgroundOfCollabPoints)}
-                  </pre>
+
+                  {Array.isArray(request.jvp?.backgroundOfCollabPoints) &&
+                    request.jvp.backgroundOfCollabPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
                 </div>
                 <div className="rounded-lg border border-[var(--border)] bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Scope of Collaboration
                   </p>
-                  <pre className="mt-1 overflow-x-auto text-xs text-[var(--text)]">
-                    {stringifyJson(request.jvp.scopeOfCollabPoints)}
-                  </pre>
+                  {Array.isArray(request.jvp?.scopeOfCollabPoints) &&
+                    request.jvp.scopeOfCollabPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Financial Overview
+                  </p>
+                  {Array.isArray(request.jvp?.financialOverviewPoints) &&
+                    request.jvp?.financialOverviewPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Key Terms
+                  </p>
+                  {Array.isArray(request.jvp?.keyTermsPoints) &&
+                    request.jvp.keyTermsPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Proposed Structure
+                  </p>
+                  {Array.isArray(request.jvp?.proposedStructurePoints) &&
+                    request.jvp.proposedStructurePoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Resources Contribution
+                  </p>
+                  {Array.isArray(request.jvp?.resourcesContributionPoints) &&
+                    request.jvp.resourcesContributionPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {renderPointValue(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Cashflow Forecast
+                  </p>
+                  {request.jvp.cashflowForecastUrl ? (
+                    <div className="mt-2 space-y-2">
+                      {isLikelyImageUrl(request.jvp.cashflowForecastUrl) ? (
+                        <ImagePreviewTrigger
+                          imageUrl={request.jvp.cashflowForecastUrl}
+                          alt={request.jvp.cashflowForecastFileName ?? 'Cashflow forecast preview'}
+                        />
+                      ) : (
+                        <a
+                          href={request.jvp.cashflowForecastUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:bg-[var(--surface-soft)]"
+                        >
+                          Preview {request.jvp.cashflowForecastFileName ?? 'Cashflow file'}
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">No attachment uploaded.</p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Cost Structure
+                  </p>
+                  {request.jvp.costStructureUrl ? (
+                    <div className="mt-2 space-y-2">
+                      {isLikelyImageUrl(request.jvp.costStructureUrl) ? (
+                        <ImagePreviewTrigger
+                          imageUrl={request.jvp.costStructureUrl}
+                          alt={request.jvp.costStructureFileName ?? 'Cost structure preview'}
+                        />
+                      ) : (
+                        <a
+                          href={request.jvp.costStructureUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:bg-[var(--surface-soft)]"
+                        >
+                          Preview {request.jvp.costStructureFileName ?? 'Cost structure file'}
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">No attachment uploaded.</p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    Work Packages Division
+                  </p>
+                  {Array.isArray(request.jvp?.workPackagesDivisionPoints) &&
+                    request.jvp.workPackagesDivisionPoints.map((point, index) => (
+                      <li key={index} className="ms-8">
+                        {typeof point === 'string' ? point : JSON.stringify(point)}
+                      </li>
+                    ))
+                  }
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] mb-2">
+                    Risk Review & Mitigation
+                  </p>
+                  {Array.isArray(request.jvp?.riskReviewMitigationItems) &&
+                    request.jvp.riskReviewMitigationItems.length > 0 ? (
+                    <table className="w-full text-sm border-collapse border border-gray-200">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] w-1/2">
+                            Risk Identified
+                          </th>
+                          <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] w-1/2">
+                            Mitigation Plan
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {request.jvp.riskReviewMitigationItems.map((item, index) => (
+                          <tr
+                            key={index}
+                          >
+                            <td className="px-3 py-2 align-top border border-gray-200">
+                              {item && typeof item === 'object' && 'riskIdentified' in item
+                                ? String(item.riskIdentified ?? '—')
+                                : '—'}
+                            </td>
+                            <td className="px-3 py-2 align-top border border-gray-200">
+                              {item && typeof item === 'object' && 'mitigationPlan' in item
+                                ? String(item.mitigationPlan ?? '—')
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">No risk items found.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -402,7 +636,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             status={request.status}
           />
 
-          {!isRtpRequest ? (
+          {!isRtpRequest && request.status === 'complete review' ? (
             <RequestSignatureSection
               requestId={request.id}
               status={request.status}
@@ -429,8 +663,8 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           workingGcpcSuggestionsCount={workingGcpcSuggestions.length}
           userRole={currentUser?.role}
           userRoles={currentUser?.roles}
-          initialVerifierComment={addDecisionInitialComment}
-          initialVerifierDecisionCode={addDecisionInitialCode}
+          initialReviewerComment={addDecisionInitialComment}
+          initialReviewerDecisionCode={addDecisionInitialCode}
         />
       </section>
 

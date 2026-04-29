@@ -22,9 +22,8 @@ export const pblBidderInputSchema = z.object({
   location: z
     .string()
     .trim()
-    .max(180, "Location must be at most 180 characters")
-    .optional()
-    .or(z.literal("")),
+    .min(1, "Location is required")
+    .max(180, "Location must be at most 180 characters"),
   personInCharge: z
     .string()
     .trim()
@@ -38,13 +37,15 @@ export const pblBidderInputSchema = z.object({
   sourcesFrom: z
     .string()
     .trim()
-    .min(1, "Sources from is required")
-    .max(180, "Sources from must be at most 180 characters"),
+    .max(180, "Sources from must be at most 180 characters")
+    .optional()
+    .or(z.literal("")),
   recommendationBy: z
     .string()
     .trim()
-    .min(1, "Recommendation by is required")
-    .max(180, "Recommendation by must be at most 180 characters"),
+    .max(180, "Recommendation by must be at most 180 characters")
+    .optional()
+    .or(z.literal("")),
 });
 
 export const createPblBaseRequestSchema = z

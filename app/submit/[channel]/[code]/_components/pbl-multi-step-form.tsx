@@ -13,7 +13,7 @@ import {
   writePersistedFormState,
 } from "@/src/components/forms/session-storage";
 import UploadedDocumentPreview from "@/src/components/forms/uploaded-document-preview";
-import { InputField, TextareaField } from "@/src/components/forms/fields";
+import { InputField, SelectField, TextareaField } from "@/src/components/forms/fields";
 import {
   PBL_FORM_CODE,
   PBL_MIN_BIDDERS_WITHOUT_JUSTIFICATION,
@@ -41,15 +41,16 @@ import {
   type PblFormSchemaContext,
   type ProjectOption,
   type RequestorContext,
+  type CompanyOption,
 } from "../_config/pbl-form-schema";
 
 type FieldErrors = Record<string, string[]>;
 
 type AlertState =
   | {
-      type: "success" | "error" | "info";
-      message: string;
-    }
+    type: "success" | "error" | "info";
+    message: string;
+  }
   | null;
 
 type UploadedDocument = {
@@ -69,11 +70,33 @@ type BidderDraftState = {
   recommendationBy: string;
 };
 
+type BidderFieldConfig =
+  | {
+      kind: "company-select";
+      key: "companyName";
+      label: string;
+      required: boolean;
+    }
+  | {
+      kind: "sector-readonly";
+      key: "sector";
+      label: string;
+      required: boolean;
+    }
+  | {
+      kind: "input";
+      key: keyof BidderDraftState;
+      label: string;
+      placeholder: string;
+      required: boolean;
+    };
+
 type PblMultiStepFormProps = {
   channel: "gcpc" | "gcp";
   requestTitle: string;
   requestor: RequestorContext;
   projects: ReadonlyArray<ProjectOption>;
+  companies: ReadonlyArray<CompanyOption>;
 };
 
 const MAX_FILE_SIZE_MB = RTP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
@@ -86,6 +109,55 @@ const emptyBidderDraft: BidderDraftState = {
   sourcesFrom: "",
   recommendationBy: "",
 };
+const bidderFieldConfigs: ReadonlyArray<BidderFieldConfig> = [
+  {
+    kind: "company-select",
+    key: "companyName",
+    label: "Company Name",
+    required: true,
+  },
+  {
+    kind: "sector-readonly",
+    key: "sector",
+    label: "Sector",
+    required: false,
+  },
+  {
+    kind: "input",
+    key: "location",
+    label: "Location",
+    placeholder: "Enter location",
+    required: true,
+  },
+  {
+    kind: "input",
+    key: "personInCharge",
+    label: "Person In Charge",
+    placeholder: "Enter PIC name",
+    required: true,
+  },
+  {
+    kind: "input",
+    key: "picContactNumber",
+    label: "PIC Contact Number",
+    placeholder: "Enter contact number",
+    required: true,
+  },
+  {
+    kind: "input",
+    key: "sourcesFrom",
+    label: "Sources From",
+    placeholder: "Enter source details",
+    required: false,
+  },
+  {
+    kind: "input",
+    key: "recommendationBy",
+    label: "Recommendation By",
+    placeholder: "Enter recommendation source",
+    required: false,
+  },
+];
 const documentMetadataSchema = submitPblRequestSchema.pick({
   documentUrl: true,
   documentPublicId: true,
@@ -116,6 +188,7 @@ export default function PblMultiStepForm({
   requestTitle,
   requestor,
   projects,
+  companies,
 }: PblMultiStepFormProps) {
   const router = useRouter();
   const category = useMemo(() => channel.toUpperCase() as "GCP" | "GCPC", [channel]);
@@ -241,6 +314,19 @@ export default function PblMultiStepForm({
     setAlertState({ type: "error", message });
     setFieldErrors(errors ?? {});
   }
+
+  const companyOptions = [
+    {
+      value: '',
+      label: 'Select company name',
+      sector: '',
+    },
+    ...companies.map((c) => ({
+      value: c.id,
+      label: `${c.companyName} (${c.companyCode})`,
+      sector: c.sector,
+    })),
+  ];
 
   function resetFeedback() {
     setAlertState(null);
@@ -633,13 +719,12 @@ export default function PblMultiStepForm({
 
       {alertState ? (
         <div
-          className={`alert mb-5 ${
-            alertState.type === "error"
-              ? "alert--danger"
-              : alertState.type === "success"
-                ? "alert--success"
-                : "alert--info"
-          }`}
+          className={`alert mb-5 ${alertState.type === "error"
+            ? "alert--danger"
+            : alertState.type === "success"
+              ? "alert--success"
+              : "alert--info"
+            }`}
         >
           <p className="alert__title">
             {alertState.type === "error"
@@ -722,48 +807,51 @@ export default function PblMultiStepForm({
           <div className="rounded-xl border border-[var(--border)] p-4">
             <p className="text-sm font-semibold text-[var(--text)]">Create bidder record</p>
             <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <InputField
-                label="Company Name"
-                value={bidderDraft.companyName}
-                onChange={(event) => updateBidderDraft("companyName", event.target.value)}
-                placeholder="Enter company name"
-                error={getBidderFieldError("companyName")}
-              />
-              <InputField
-                label="Location"
-                value={bidderDraft.location}
-                onChange={(event) => updateBidderDraft("location", event.target.value)}
-                placeholder="Enter location"
-                error={getBidderFieldError("location")}
-              />
-              <InputField
-                label="Person In Charge"
-                value={bidderDraft.personInCharge}
-                onChange={(event) => updateBidderDraft("personInCharge", event.target.value)}
-                placeholder="Enter PIC name"
-                error={getBidderFieldError("personInCharge")}
-              />
-              <InputField
-                label="PIC Contact Number"
-                value={bidderDraft.picContactNumber}
-                onChange={(event) => updateBidderDraft("picContactNumber", event.target.value)}
-                placeholder="Enter contact number"
-                error={getBidderFieldError("picContactNumber")}
-              />
-              <InputField
-                label="Sources From"
-                value={bidderDraft.sourcesFrom}
-                onChange={(event) => updateBidderDraft("sourcesFrom", event.target.value)}
-                placeholder="Enter source details"
-                error={getBidderFieldError("sourcesFrom")}
-              />
-              <InputField
-                label="Recommendation By"
-                value={bidderDraft.recommendationBy}
-                onChange={(event) => updateBidderDraft("recommendationBy", event.target.value)}
-                placeholder="Enter recommendation source"
-                error={getBidderFieldError("recommendationBy")}
-              />
+              {bidderFieldConfigs.map((fieldConfig) => {
+                if (fieldConfig.kind === "company-select") {
+                  return (
+                    <SelectField
+                      key={fieldConfig.key}
+                      label={fieldConfig.label}
+                      required={fieldConfig.required}
+                      value={bidderDraft.companyName}
+                      options={companyOptions.map((company) => ({
+                        value: company.label,
+                        label: company.label,
+                      }))}
+                      onChange={(event) => updateBidderDraft("companyName", event.target.value)}
+                      error={getBidderFieldError("companyName")}
+                    />
+                  );
+                }
+
+                if (fieldConfig.kind === "sector-readonly") {
+                  return (
+                    <InputField
+                      key={fieldConfig.key}
+                      label={fieldConfig.label}
+                      required={fieldConfig.required}
+                      value={
+                        companyOptions.find((company) => company.label === bidderDraft.companyName)
+                          ?.sector ?? ""
+                      }
+                      disabled
+                    />
+                  );
+                }
+
+                return (
+                  <InputField
+                    key={fieldConfig.key}
+                    label={fieldConfig.label}
+                    required={fieldConfig.required}
+                    value={bidderDraft[fieldConfig.key]}
+                    onChange={(event) => updateBidderDraft(fieldConfig.key, event.target.value)}
+                    placeholder={fieldConfig.placeholder}
+                    error={getBidderFieldError(fieldConfig.key)}
+                  />
+                );
+              })}
             </div>
             <div className="mt-4 flex justify-end">
               <Button type="button" variant="secondary" onClick={handleAddBidder} disabled={isBusy}>
@@ -829,8 +917,8 @@ export default function PblMultiStepForm({
                         </td>
                         <td className="px-3 py-3 text-sm text-[var(--text)]">{bidder.personInCharge}</td>
                         <td className="px-3 py-3 text-sm text-[var(--text)]">{bidder.picContactNumber}</td>
-                        <td className="px-3 py-3 text-sm text-[var(--text-muted)]">{bidder.sourcesFrom}</td>
-                        <td className="px-3 py-3 text-sm text-[var(--text-muted)]">{bidder.recommendationBy}</td>
+                        <td className="px-3 py-3 text-sm text-[var(--text-muted)]">{bidder.sourcesFrom || '-' }</td>
+                        <td className="px-3 py-3 text-sm text-[var(--text-muted)]">{bidder.recommendationBy || '-' }</td>
                         <td className="px-3 py-3">
                           <Button
                             type="button"

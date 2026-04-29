@@ -69,6 +69,13 @@ model Request {
   verifierDecisionCode String?
   verifiedBy      String?
   verifiedAt      DateTime?
+  reviewerCommentText String?
+  reviewerDecisionCode String?
+  reviewerCommentList Json? @map("review-comment-list")
+  reviewerCommentTable Json? @map("review-comment-table")
+  reviewerCommentUrls String[] @default([]) @map("review-comment-url")
+  reviewedBy      String?
+  reviewedAt      DateTime?
   reviewConclusionCode1a     Boolean   @default(false)
   reviewConclusionCode1b     Boolean   @default(false)
   reviewConclusionCode1bComment String?

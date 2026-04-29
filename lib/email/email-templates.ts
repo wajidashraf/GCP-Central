@@ -363,6 +363,81 @@ export function getEngagementBookingTemplate(
 }
 
 /**
+ * Engagement update/cancel notification template
+ */
+export function getEngagementStatusUpdateTemplate(
+  recipientName: string,
+  changeType: "updated" | "cancelled",
+  requestNo: string,
+  requestTitle: string,
+  engagementName: string,
+  engagementType: string | null,
+  engagementLocation: string | null,
+  startTime: Date | null,
+  endTime: Date | null,
+  detailsUrl: string,
+  appName: string = "GCP Central"
+): string {
+  const formatTime = (date: Date) =>
+    new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+
+  const engagementTypeLabel =
+    engagementType === "virtual"
+      ? "Virtual"
+      : engagementType === "in_person"
+        ? "In-Person"
+        : "Not specified";
+  const headline =
+    changeType === "updated"
+      ? "Engagement Re-Scheduled"
+      : "Engagement Cancelled";
+  const leadText =
+    changeType === "updated"
+      ? "The engagement has been re-scheduled by an administrator."
+      : "This engagement has been cancelled by an administrator.";
+  const slotInfo =
+    changeType === "updated" && startTime && endTime
+      ? `
+      <strong>Scheduled Time:</strong><br>
+      <span style="font-size: 14px; color: #4b5563;">
+        ${formatTime(startTime)} to ${formatTime(endTime)}
+      </span><br>
+    `
+      : "";
+  const locationInfo = engagementLocation
+    ? `<strong>Location:</strong> ${engagementLocation}<br>`
+    : "";
+
+  const content = `
+    <h2>${headline}</h2>
+    <p>Hello ${recipientName},</p>
+    <p>${leadText}</p>
+    <div class="alert" style="background-color: #e0e7ff; border-left-color: #667eea;">
+      <strong>Request Number:</strong> ${requestNo}<br>
+      <strong>Request Title:</strong> ${requestTitle}<br>
+      <strong>Engagement Name:</strong> ${engagementName}<br>
+      <strong>Engagement Type:</strong> ${engagementTypeLabel}<br>
+      ${locationInfo}
+      ${slotInfo}
+      <strong>Status:</strong> ${changeType === "updated" ? "Re-Schedule" : "Cancelled"}
+    </div>
+    <center>
+      <a href="${detailsUrl}" class="button">View Engagement Details</a>
+    </center>
+  `;
+
+  return getEmailLayout(content, appName);
+}
+
+/**
  * Plain text fallback generator
  * Extracts text from HTML (basic implementation)
  */

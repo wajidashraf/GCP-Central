@@ -3,8 +3,8 @@
 :root {
   --bg: #f3f6fb;
   --surface: #ffffff;
-  --surface-soft: #f8fafd;
-  --surface-muted: #eef3fa;
+  --surface-soft: #dee1e7;
+  --surface-muted: #d1d4d7;
   --text: #0f172a;
   --text-muted: #475569;
   --text-subtle: #64748b;
@@ -16,13 +16,14 @@
   --accent-500: #0ea5e9;
   --border: #dbe4ef;
   --border-strong: #c8d5e6;
-  --success-bg: #ecfdf3;
+  --success-bg: #c3fbda;
   --success-text: #166534;
-  --warning-bg: #fff7ed;
+  --warning-bg: #fbe7cf;
   --warning-text: #9a3412;
-  --info-bg: #eff6ff;
+  --info-bg: #d2e3fa;
+  --primary-bg: #79aef7;
   --info-text: #1e40af;
-  --danger-bg: #fef2f2;
+  --danger-bg: #f7d4d4;
   --danger-text: #991b1b;
   --shadow-soft: 0 10px 30px -20px rgba(15, 23, 42, 0.4);
   --shadow-mid: 0 20px 45px -32px rgba(15, 23, 42, 0.45);
@@ -124,7 +125,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 0.2rem 0.6rem;
   font-size: 0.72rem;
   font-weight: 600;
@@ -136,37 +137,42 @@ textarea {
 .badge--brand {
   background: var(--brand-100);
   color: var(--brand-700);
-  border-color: #bfdbfe;
+  border-color: #83b9fa;
 }
 
 .badge--neutral {
-  background: #f1f5f9;
+  background: #c8def5;
   color: #334155;
-  border-color: #e2e8f0;
+  border-color: #bcd8fc;
 }
 
 .badge--success {
   background: var(--success-bg);
   color: var(--success-text);
-  border-color: #bbf7d0;
+  border-color: #5ef593;
 }
 
 .badge--warning {
   background: var(--warning-bg);
   color: var(--warning-text);
-  border-color: #fed7aa;
+  border-color: #fdbe77;
 }
 
 .badge--info {
   background: var(--info-bg);
   color: var(--info-text);
-  border-color: #bfdbfe;
+  border-color: #91c0fa;
+}
+.badge--primary {
+  background: #3082e5;
+  color: #fff;
+  border-color: #4698fc;
 }
 
 .badge--danger {
   background: var(--danger-bg);
   color: var(--danger-text);
-  border-color: #fecaca;
+  border-color: #fbabab;
 }
 
 .alert {

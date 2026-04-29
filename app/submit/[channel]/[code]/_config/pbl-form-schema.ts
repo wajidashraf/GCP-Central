@@ -20,6 +20,12 @@ export type ProjectOption = {
   companyName: string;
 };
 
+export type CompanyOption = {
+  id: string;
+  companyName: string;
+  companyCode: string;
+  sector: string;
+};
 export type PblDetailsState = {
   projectId: string;
   projectCode: string;

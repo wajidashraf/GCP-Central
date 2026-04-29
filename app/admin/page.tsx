@@ -1,4 +1,5 @@
 ﻿import Link from 'next/link';
+import Button from '@/src/components/ui/button';
 
 const ADMIN_SECTIONS = [
   {
@@ -12,6 +13,12 @@ const ADMIN_SECTIONS = [
     description: 'Create meeting slots and assign one or more reviewer attendees for request engagements.',
     sprint: 'Live',
     href: '/admin/engagement-slots',
+  },
+  {
+    title: 'Engagement Management',
+    description: 'View scheduled engagements, update date/time, notify participants, or cancel engagement records.',
+    sprint: 'Live',
+    href: '/admin/engagement-management',
   },
   {
     title: 'Signatory groups',
@@ -42,6 +49,9 @@ const ADMIN_SECTIONS = [
 export default function AdminPage() {
   return (
     <div className="space-y-6">
+         <Button href={`/`} variant="secondary" size="sm">
+            Back
+          </Button>
       <header className="page-header">
         <h1 className="page-title">Admin panel</h1>
         <p className="page-subtitle">

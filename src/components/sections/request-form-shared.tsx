@@ -45,6 +45,7 @@ export function formatDateTime(value: Date | null | undefined) {
  * Safely converts values to formatted JSON string
  */
 export function stringifyJson(value: unknown) {
+  console.log('value', value);
   if (!value) return '—';
   try {
     return JSON.stringify(value, null, 2);
@@ -61,9 +62,11 @@ const BASE_BADGE_STYLE = 'rounded-[6px] bg-gray-700 text-white px-2 py-1';
 export const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Draft: BASE_BADGE_STYLE,
   'Draft-Details': BASE_BADGE_STYLE,
+  'Ready for Engagement': BASE_BADGE_STYLE,
+  R: BASE_BADGE_STYLE,
   New: BASE_BADGE_STYLE,
   FR: BASE_BADGE_STYLE,
-  Fs: BASE_BADGE_STYLE,
+  FS: BASE_BADGE_STYLE,
   'In Review': BASE_BADGE_STYLE,
   'Draft Review': BASE_BADGE_STYLE,
   'Pending Review': BASE_BADGE_STYLE,
@@ -72,6 +75,5 @@ export const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Resubmit: BASE_BADGE_STYLE,
   Acknowledged: BASE_BADGE_STYLE,
   Endorsed: BASE_BADGE_STYLE,
-  'For Record': BASE_BADGE_STYLE,
   NC: BASE_BADGE_STYLE,
 };

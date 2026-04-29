@@ -16,10 +16,10 @@ interface RequestActionsSectionProps {
   workingGcpcSuggestionsCount?: number;
   userRole?: string;
   userRoles?: string[];
-  /** Prefill verifier comment when opening Add decision (from relation or denormalised field). */
-  initialVerifierComment?: string | null;
+  /** Prefill reviewer comment when opening Add decision. */
+  initialReviewerComment?: string | null;
   /** Prefill decision code when it is stored as 1–5 (not a legacy status label). */
-  initialVerifierDecisionCode?: string | null;
+  initialReviewerDecisionCode?: string | null;
 }
 
 export default function RequestActionsSection({
@@ -31,8 +31,8 @@ export default function RequestActionsSection({
   workingGcpcSuggestionsCount = 0,
   userRole,
   userRoles = [],
-  initialVerifierComment = null,
-  initialVerifierDecisionCode = null,
+  initialReviewerComment = null,
+  initialReviewerDecisionCode = null,
 }: RequestActionsSectionProps) {
   const router = useRouter();
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
@@ -42,6 +42,7 @@ export default function RequestActionsSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedStatus = status.trim().toLowerCase();
+  console.log('normalizedStatus', normalizedStatus);
   const normalizedRequestType = requestType.trim().toLowerCase();
   const isRtpRequest =
     normalizedRequestType === 'rtp' ||
@@ -58,9 +59,9 @@ export default function RequestActionsSection({
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
   const canVerifyRtp = canActAsVerifier && ['new', 'rs'].includes(normalizedStatus);
   const canReview = canActAsReviewer && normalizedStatus === 'r';
-  const canMarkReviewAsDraft = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'r' && !isFrOrRs;
-  const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'draft review';
-  const canMarkAsPendingReview = canActAsVerifier && workingGcpcSuggestionsCount > 0 && normalizedStatus === 'draft review';
+  // const canMarkReviewAsDraft = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'r' && !isFrOrRs;
+  const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'pending review';
+  const canMarkAsPendingReview = canActAsVerifier && workingGcpcSuggestionsCount > 0 && normalizedStatus === 'pending review';
   const canBookEngagement = canActAsRequestor && ['ready for engagement'].includes(normalizedStatus);
   const canMoveToPendingAcceptance =
     (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'complete review';
@@ -187,9 +188,7 @@ export default function RequestActionsSection({
   const showActions =
     canVerify ||
     canReview ||
-    canMarkReviewAsDraft ||
     canReviewAsWorkingGcpc ||
-    canMarkAsPendingReview ||
     canBookEngagement ||
     canMoveToPendingAcceptance ||
     canOpenEndorsement ||
@@ -208,31 +207,9 @@ export default function RequestActionsSection({
               size="sm"
               onClick={() => setVerifyModalOpen(true)}
             >
-              Verify Data
-            </Button>
-          )}
-
-          {canReview && (
-            <Button
-              variant="accent"
-              size="sm"
-              onClick={() => openReviewModal('reviewer')}
-            >
               Review Data
             </Button>
           )}
-
-          {canMarkReviewAsDraft && (
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={isSubmitting}
-              onClick={handleMarkReviewAsDraft}
-            >
-              {isSubmitting ? 'Marking Draft...' : 'Mark Review as Draft'}
-            </Button>
-          )}
-
           {canReviewAsWorkingGcpc && (
             <Button
               variant="accent"
@@ -243,7 +220,7 @@ export default function RequestActionsSection({
             </Button>
           )}
 
-          {canMarkAsPendingReview && (
+          {canReview && (
             <Button variant="primary" size="sm" disabled={isSubmitting} onClick={() => setAddDecisionModalOpen(true)}>
               Add decision
             </Button>
@@ -302,8 +279,8 @@ export default function RequestActionsSection({
         onClose={() => !isSubmitting && setAddDecisionModalOpen(false)}
         onSubmit={handleAddDecisionSubmit}
         requestType={requestType}
-        initialComment={initialVerifierComment}
-        initialDecisionCode={initialVerifierDecisionCode}
+        initialComment={initialReviewerComment}
+        initialDecisionCode={initialReviewerDecisionCode}
         isLoading={isSubmitting}
       />
     </>

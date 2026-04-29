@@ -5,17 +5,32 @@ import Button from '@/src/components/ui/button';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
+import FilterBar from '@/src/components/requests/filterbar';
 
+
+
+// AFTER:
 const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Draft: 'badge--neutral',
   'Draft-Details': 'badge--neutral',
-  New: 'badge--info',
+  New: 'badge--primary',
   'In Review': 'badge--warning',
   Resubmit: 'badge--warning',
+  RS: 'badge--warning',           // ReSubmit short code
   Acknowledged: 'badge--success',
   Endorsed: 'badge--success',
   'For Record': 'badge--neutral',
+  FR: 'badge--neutral',           // For Record short code
   NC: 'badge--danger',
+  R: 'badge--info',               // Ready for Review short code
+  'Ready for Engagement': 'badge--success',
+};
+
+// Maps short DB codes → human-readable display labels
+const STATUS_DISPLAY_MAP: Record<string, string> = {
+  FR: 'For Record',
+  RS: 'ReSubmit',
+  R: 'Ready for Review',
 };
 
 function formatRequestDate(submittedAt: Date | null, createdAt: Date) {
@@ -27,9 +42,10 @@ function formatRequestDate(submittedAt: Date | null, createdAt: Date) {
   }).format(timestamp);
 }
 
+// AFTER — added third branch for compact 8-digit date: REQ-0003-20260429
 function cleanRequestNo(requestNo: string) {
   return requestNo.replace(
-    /(\s*[-|/]\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}.*$)|(\s*[-|/]\s*\d{4}-\d{2}-\d{2}.*$)/,
+    /(\s*[-|/]\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}.*$)|(\s*[-|/]\s*\d{4}-\d{2}-\d{2}.*$)|(-\d{8}.*$)/,
     ''
   ).trim();
 }
@@ -100,18 +116,22 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     jvp: { project: { projectName: string } } | null;
   }> = [];
 
+  const HIDDEN_STATUSES = ['Draft', 'Draft-Details'] as const;
+  const baseWhere: Prisma.RequestWhereInput = {
+    status: { notIn: [...HIDDEN_STATUSES] },
+  };
   try {
+    // AFTER — add baseWhere that is always applied:
     const filterWhere: Prisma.RequestWhereInput = {
       ...(selectedCompany ? { companyName: selectedCompany } : {}),
       ...(selectedStatus ? { status: selectedStatus } : {}),
       ...(selectedType
-        ? {
-            OR: [{ requestType: selectedType }, { routingType: selectedType }],
-          }
+        ? { OR: [{ requestType: selectedType }, { routingType: selectedType }] }
         : {}),
     };
+
     const whereClause: Prisma.RequestWhereInput = {
-      AND: [visibilityWhere, filterWhere],
+      AND: [visibilityWhere, baseWhere, filterWhere],  // baseWhere added here
     };
 
     const sortOrder =
@@ -159,6 +179,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   } catch {
     loadError = true;
   }
+  console.log(requests)
 
   const filterOptions: RequestFilterOption[] = await prisma.request.findMany({
     where: visibilityWhere,
@@ -172,7 +193,13 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   });
 
   const companyOptions: string[] = [...new Set(filterOptions.map((item: RequestFilterOption) => item.companyName).filter(Boolean))].sort();
-  const statusOptions: string[] = [...new Set(filterOptions.map((item: RequestFilterOption) => item.status).filter(Boolean))].sort();
+  const statusOptions: string[] = [
+    ...new Set(
+      filterOptions
+        .map((item: RequestFilterOption) => item.status)
+        .filter((s): s is string => Boolean(s) && !HIDDEN_STATUSES.includes(s as typeof HIDDEN_STATUSES[number]))
+    ),
+  ].sort();
   const typeOptions: string[] = [
     ...new Set(
       filterOptions
@@ -214,53 +241,16 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
         </div>
       ) : null}
 
-      <div className="surface-card p-4">
-        <form method="get" className="grid gap-3 md:grid-cols-4">
-          <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
-            Company
-            <select name="company" defaultValue={selectedCompany} className="input mt-1 h-9 py-0 text-sm">
-              <option value="">All companies</option>
-              {companyOptions.map((company) => (
-                <option key={company} value={company}>
-                  {company}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
-            Status
-            <select name="status" defaultValue={selectedStatus} className="input mt-1 h-9 py-0 text-sm">
-              <option value="">All statuses</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
-            Type of request
-            <select name="type" defaultValue={selectedType} className="input mt-1 h-9 py-0 text-sm">
-              <option value="">All types</option>
-              {typeOptions.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end gap-2">
-            <input type="hidden" name="sortBy" value={sortBy} />
-            <input type="hidden" name="sortDir" value={sortDir} />
-            <button type="submit" className="btn btn--secondary btn--sm">
-              Apply Filters
-            </button>
-            <Link href="/requests" className="btn btn--ghost btn--sm">
-              Reset
-            </Link>
-          </div>
-        </form>
-      </div>
+      <FilterBar
+        companyOptions={companyOptions}
+        statusOptions={statusOptions}
+        typeOptions={typeOptions}
+        selectedCompany={selectedCompany}
+        selectedStatus={selectedStatus}
+        selectedType={selectedType}
+        sortBy={sortBy}
+        sortDir={sortDir}
+      />
 
       <div className="table-shell">
         <table>
@@ -303,18 +293,25 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                     <td>{request.companyName}</td>
                     <td>{formatRequestDate(request.submittedAt, request.createdAt)}</td>
                     <td>
-                      <span className={`badge ${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
-                        {request.status}
+                      <span className={`badge text-sm ${STATUS_BADGE_CLASS_MAP[request.status]?? 'badge--neutral'}`}>
+                        {STATUS_DISPLAY_MAP[request.status] ?? request.status}
                       </span>
                     </td>
                     <td>
-                      <Button
-                        href={`/requests/${request.id}`}
-                        variant="secondary"
-                        size="sm"
-                      >
-                        Open
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button href={`/requests/${request.id}`} variant="primary" size="sm">
+                          Open
+                        </Button>
+                        {request.status === 'Ready for Engagement' && (
+                          <Button
+                            href={`/requests/${request.id}/book-engagement`}
+                            variant="accent"
+                            size="sm"
+                          >
+                            Book
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

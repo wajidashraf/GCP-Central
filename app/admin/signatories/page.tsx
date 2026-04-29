@@ -84,6 +84,9 @@ export default function SignatoriesAdminPage() {
 
   return (
     <div className="space-y-6">
+         <Button href={`/admin`} variant="secondary" size="sm">
+            Back
+          </Button>
       <header className="page-header">
         <h1 className="page-title">Signatory groups</h1>
         <p className="page-subtitle">

@@ -7,6 +7,7 @@ import {
   toggleUserActiveStatusAction,
   updateUserRoleAssignmentsAction,
 } from './actions';
+import Button from '@/src/components/ui/button';
 
 const FALLBACK_ROLE: UserRole = 'requestor';
 
@@ -133,6 +134,9 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
 
   return (
     <div className="space-y-6">
+      <Button href={`/admin`} variant="secondary" size="sm">
+            Back
+          </Button>
       <header className="page-header">
         <h1 className="page-title">User & Role Management</h1>
         <p className="page-subtitle">
