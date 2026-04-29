@@ -47,7 +47,6 @@ export default function RequestActionsSection({
     normalizedRequestType === 'rtp' ||
     normalizedRequestType.includes('registration of tender') ||
     normalizedRequestType.includes('tender & proposal');
-  const isClosedRtpStatus = isRtpRequest && ['fr', 'rs', 'w'].includes(normalizedStatus);
   const roleSet = new Set([userRole, ...userRoles].filter(Boolean).map((role) => String(role).toLowerCase()));
   const hasRole = (role: string) => roleSet.has(role);
   const isAdmin = hasRole('admin');
@@ -57,6 +56,7 @@ export default function RequestActionsSection({
   const canActAsRequestor = isAdmin || hasRole('requestor');
   const isFrOrRs = normalizedStatus === 'fr' || normalizedStatus === 'rs';
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
+  const canVerifyRtp = canActAsVerifier && ['new', 'rs'].includes(normalizedStatus);
   const canReview = canActAsReviewer && normalizedStatus === 'r';
   const canMarkReviewAsDraft = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'r' && !isFrOrRs;
   const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'draft review';
@@ -152,8 +152,36 @@ export default function RequestActionsSection({
     setReviewModalOpen(true);
   };
 
-  if (isClosedRtpStatus) {
-    return null;
+  if (isRtpRequest) {
+    if (!canVerifyRtp) {
+      return null;
+    }
+
+    return (
+      <>
+        <div className="rounded-lg border border-[var(--border)] bg-white p-5">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setVerifyModalOpen(true)}
+            >
+              Verify Data
+            </Button>
+          </div>
+        </div>
+
+        <VerifyModal
+          isOpen={verifyModalOpen}
+          onClose={() => setVerifyModalOpen(false)}
+          onSubmit={handleVerifySubmit}
+          currentStatus={status}
+          requestType={requestType}
+          isSpecialProject={isSpecialProject}
+          isLoading={isSubmitting}
+        />
+      </>
+    );
   }
 
   const showActions =

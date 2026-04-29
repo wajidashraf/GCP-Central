@@ -33,7 +33,7 @@ export function DocumentCard({ doc }: { doc: DocumentItem }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`Download ${displayName}`}
-      className="group flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-2.5 no-underline transition-all duration-150 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
+      className="group flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface,#f8fafc)] px-3 py-1.5 no-underline transition-all duration-150 hover:border-[var(--brand-600)] hover:bg-[var(--brand-50,#eef2ff)] hover:shadow-[0_4px_16px_rgba(59,91,219,0.12)]"
     >
       {/* Left: icon (50% of original h-16 w-16) + badge stacked */}
       <div className="flex shrink-0 flex-col items-center gap-1">
@@ -66,7 +66,7 @@ export function DocumentCards({ documents }: { documents: DocumentItem[] }) {
   const overflow = documents.length - MAX_VISIBLE_DOCS;
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-3">
+    <div className=" flex flex-wrap items-center gap-3">
       {visible.map((doc) => (
         <DocumentCard key={`${doc.label}-${doc.url}`} doc={doc} />
       ))}

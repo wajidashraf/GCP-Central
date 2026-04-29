@@ -28,6 +28,16 @@ function isValidDateInput(value: string) {
   return !Number.isNaN(parsedDate.getTime());
 }
 
+function addDaysToDateOnly(baseDate: string, daysToAdd: number) {
+  const parsedDate = new Date(`${baseDate}T00:00:00.000Z`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  parsedDate.setUTCDate(parsedDate.getUTCDate() + daysToAdd);
+  return parsedDate.toISOString().slice(0, 10);
+}
+
 export const createRtpBaseRequestSchema = z
   .object({
     requestType: z.literal(RTP_FORM_CODE),
@@ -83,6 +93,8 @@ export const saveRtpDetailsSchema = z
         "Invalid registration type"
       ),
     tenderClosingDate: z.string().trim().optional().or(z.literal("")),
+    numberOfDaysAfterTenderClosingDate: z.string().trim().optional().or(z.literal("")),
+    validityPeriod: z.string().trim().optional().or(z.literal("")),
     projectName: z
       .string()
       .trim()
@@ -108,6 +120,9 @@ export const saveRtpDetailsSchema = z
   .superRefine((value, ctx) => {
     const shouldRequireTenderDate = value.registrationType === 1;
     const tenderClosingDate = value.tenderClosingDate?.trim() ?? "";
+    const numberOfDaysAfterTenderClosingDate =
+      value.numberOfDaysAfterTenderClosingDate?.trim() ?? "";
+    const validityPeriod = value.validityPeriod?.trim() ?? "";
 
     if (shouldRequireTenderDate && tenderClosingDate.length === 0) {
       ctx.addIssue({
@@ -124,6 +139,72 @@ export const saveRtpDetailsSchema = z
         message: "Tender closing date must be a valid date",
         path: ["tenderClosingDate"],
       });
+    }
+
+    if (tenderClosingDate.length === 0 && numberOfDaysAfterTenderClosingDate.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tender closing date is required before entering number of days",
+        path: ["numberOfDaysAfterTenderClosingDate"],
+      });
+      return;
+    }
+
+    if (tenderClosingDate.length === 0 && validityPeriod.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Validity period requires a tender closing date",
+        path: ["validityPeriod"],
+      });
+      return;
+    }
+
+    if (tenderClosingDate.length > 0) {
+      if (numberOfDaysAfterTenderClosingDate.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Number of days after tender closing date is required",
+          path: ["numberOfDaysAfterTenderClosingDate"],
+        });
+        return;
+      }
+
+      const parsedDays = Number(numberOfDaysAfterTenderClosingDate);
+      if (!Number.isInteger(parsedDays) || parsedDays < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Number of days must be a whole number greater than or equal to 0",
+          path: ["numberOfDaysAfterTenderClosingDate"],
+        });
+        return;
+      }
+
+      const computedValidityPeriod = addDaysToDateOnly(tenderClosingDate, parsedDays);
+      if (!computedValidityPeriod) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Unable to calculate validity period from tender closing date",
+          path: ["validityPeriod"],
+        });
+        return;
+      }
+
+      if (!isValidDateInput(validityPeriod)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Validity period must be a valid date",
+          path: ["validityPeriod"],
+        });
+        return;
+      }
+
+      if (validityPeriod !== computedValidityPeriod) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Validity period must match tender closing date plus the provided number of days",
+          path: ["validityPeriod"],
+        });
+      }
     }
   });
 

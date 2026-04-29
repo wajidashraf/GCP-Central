@@ -33,8 +33,7 @@ export default function VerifyModal({
     const normalizedRequestType = requestType.trim().toLowerCase();
     const isRequestType = (...keywords: string[]) =>
       keywords.some((keyword) => normalizedRequestType.includes(keyword));
-
-    if (isRequestType('registration of tender', 'tender & proposal')) {
+    if (isRequestType('rtp')|| isRequestType('registration of tender', 'tender & proposal')) {
       return [
         { value: REQUEST_STATUS_MAP.FR.label, label: REQUEST_STATUS_MAP.FR.label },
         { value: REQUEST_STATUS_MAP.RS.label, label: REQUEST_STATUS_MAP.RS.label },

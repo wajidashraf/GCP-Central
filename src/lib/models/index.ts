@@ -73,6 +73,8 @@ export const RtpRequestSchema = new Schema({
   clientName: { type: String, required: true },
   registrationType: { type: Number, required: true },
   tenderClosingDate: { type: Date },
+  numberOfDaysAfterTenderClosingDate: { type: Number },
+  validityPeriod: { type: Date },
   projectName: { type: String, required: true },
   projectDescription: { type: String, required: true },
   specialProject: { type: Boolean, default: false },

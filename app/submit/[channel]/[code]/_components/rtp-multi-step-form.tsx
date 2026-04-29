@@ -79,8 +79,30 @@ type PersistedRtpFormState = {
   uploadedDocument: UploadedDocument | null;
 };
 
+function normalizeRtpDetailsState(details: Partial<RtpDetailsState> | undefined): RtpDetailsState {
+  return {
+    clientName: details?.clientName ?? "",
+    registrationType: details?.registrationType ?? 1,
+    tenderClosingDate: details?.tenderClosingDate ?? "",
+    numberOfDaysAfterTenderClosingDate: details?.numberOfDaysAfterTenderClosingDate ?? "",
+    validityPeriod: details?.validityPeriod ?? "",
+    projectName: details?.projectName ?? "",
+    projectDescription: details?.projectDescription ?? "",
+  };
+}
+
 function flattenFieldErrors(error: { flatten: () => { fieldErrors: FieldErrors } }) {
   return error.flatten().fieldErrors;
+}
+
+function addDaysToIsoDate(baseDate: string, daysToAdd: number) {
+  const parsedBaseDate = new Date(`${baseDate}T00:00:00.000Z`);
+  if (Number.isNaN(parsedBaseDate.getTime())) {
+    return "";
+  }
+
+  parsedBaseDate.setUTCDate(parsedBaseDate.getUTCDate() + daysToAdd);
+  return parsedBaseDate.toISOString().slice(0, 10);
 }
 
 
@@ -102,6 +124,8 @@ export default function RtpMultiStepForm({
     clientName: "",
     registrationType: 1,
     tenderClosingDate: "",
+    numberOfDaysAfterTenderClosingDate: "",
+    validityPeriod: "",
     projectName: "",
     projectDescription: "",
   });
@@ -120,6 +144,38 @@ export default function RtpMultiStepForm({
   const isBusy = isPending || isUploading;
 
   useEffect(() => {
+    const tenderClosingDate = details.tenderClosingDate ?? "";
+    const numberOfDaysAfterTenderClosingDate =
+      details.numberOfDaysAfterTenderClosingDate ?? "";
+    const trimmedTenderDate = tenderClosingDate.trim();
+    const parsedDays = Number(numberOfDaysAfterTenderClosingDate);
+    const hasValidInputs =
+      trimmedTenderDate.length > 0 &&
+      numberOfDaysAfterTenderClosingDate.trim().length > 0 &&
+      Number.isInteger(parsedDays) &&
+      parsedDays >= 0;
+
+    if (!hasValidInputs) {
+      if (details.validityPeriod !== "") {
+        setDetails((current) => ({ ...current, validityPeriod: "" }));
+      }
+      return;
+    }
+
+    const computedValidityPeriod = addDaysToIsoDate(trimmedTenderDate, parsedDays);
+    if (!computedValidityPeriod) {
+      if (details.validityPeriod !== "") {
+        setDetails((current) => ({ ...current, validityPeriod: "" }));
+      }
+      return;
+    }
+
+    if (computedValidityPeriod !== details.validityPeriod) {
+      setDetails((current) => ({ ...current, validityPeriod: computedValidityPeriod }));
+    }
+  }, [details.numberOfDaysAfterTenderClosingDate, details.tenderClosingDate, details.validityPeriod]);
+
+  useEffect(() => {
     const persistedState = readPersistedFormState<PersistedRtpFormState>(
       RTP_SESSION_STORAGE_KEY
     );
@@ -129,7 +185,7 @@ export default function RtpMultiStepForm({
       setRequestId(persistedState.requestId);
       setRequestNo(persistedState.requestNo);
       setProjectId(persistedState.projectId);
-      setDetails(persistedState.details);
+      setDetails(normalizeRtpDetailsState(persistedState.details));
       setSpecialProject(persistedState.specialProject);
       setAcknowledgement(persistedState.acknowledgement);
       setUploadedDocument(persistedState.uploadedDocument);
@@ -242,6 +298,8 @@ export default function RtpMultiStepForm({
       clientName: details.clientName,
       registrationType: details.registrationType,
       tenderClosingDate: details.tenderClosingDate,
+      numberOfDaysAfterTenderClosingDate: details.numberOfDaysAfterTenderClosingDate,
+      validityPeriod: details.validityPeriod,
       projectName: details.projectName,
       projectDescription: details.projectDescription,
       companyId: requestor.companyId,

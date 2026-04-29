@@ -15,6 +15,8 @@ export type RtpDetailsState = {
   clientName: string;
   registrationType: number;
   tenderClosingDate: string;
+  numberOfDaysAfterTenderClosingDate: string;
+  validityPeriod: string;
   projectName: string;
   projectDescription: string;
 };
@@ -129,6 +131,31 @@ export const RTP_FORM_STEPS: ReadonlyArray<
         onChange: (event, context) =>
           context.updateDetails({ tenderClosingDate: event.target.value }),
         errorKey: "tenderClosingDate",
+      },
+      {
+        id: "days-after-tender-closing-date",
+        kind: "input",
+        inputType: "number",
+        label: "No. of Days After Tender Closing Date",
+        value: (context) => context.details.numberOfDaysAfterTenderClosingDate,
+        onChange: (event, context) =>
+          context.updateDetails({
+            numberOfDaysAfterTenderClosingDate: event.target.value,
+          }),
+        placeholder: "Enter number of days",
+        hint: "Validity Period will be calculated automatically based on Tender Closing Date.",
+        errorKey: "numberOfDaysAfterTenderClosingDate",
+      },
+      {
+        id: "validity-period",
+        kind: "input",
+        inputType: "date",
+        label: "Validity Period",
+        value: (context) => context.details.validityPeriod,
+        readOnly: true,
+        inputClassName: "bg-slate-50",
+        hint: "Auto-calculated from Tender Closing Date + Number of Days.",
+        errorKey: "validityPeriod",
       },
       {
         id: "project-name",

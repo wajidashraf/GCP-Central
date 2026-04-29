@@ -131,6 +131,8 @@ model RtpRequest {
   clientName         String
   registrationType   Int
   tenderClosingDate  DateTime?
+  numberOfDaysAfterTenderClosingDate Int?
+  validityPeriod     DateTime?
   projectName        String
   projectDescription String
   specialProject     Boolean   @default(false)

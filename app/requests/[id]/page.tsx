@@ -15,6 +15,7 @@ import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { ensureCompleteReviewFromSignatures } from '@/src/lib/requests/ensure-complete-review-from-signatures';
+import { REGISTRATION_TYPES } from '@/src/constants/enums/procurement';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
   if (!request) {
     notFound();
   }
+  console.log('request', request);
 
   const promotedToCompleteReview = await ensureCompleteReviewFromSignatures(request.id, request.status);
   if (promotedToCompleteReview) {
@@ -159,6 +161,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
     hasCurrentUserRole('reviewer') || hasCurrentUserRole('verifier') || hasCurrentUserRole('admin');
   const canSeeWorkingGcpcSuggestions =
     hasCurrentUserRole('working_gcpc') || hasCurrentUserRole('verifier');
+  const isRtpRequest = request.requestType.trim().toLowerCase() === 'rtp';
 
   const signatoryMembers = await prisma.signatoryMember.findMany({
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -174,6 +177,11 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
   const preparedMembers = signatoryMembers.filter((m) => m.group === 'prepared').map(toSignatoryRow);
   const confirmedMembers = signatoryMembers.filter((m) => m.group === 'confirmed').map(toSignatoryRow);
+
+  const registrationTypeLabel =
+    request.rtp ? REGISTRATION_TYPES.find(
+      (item) => item.value === request.rtp?.registrationType
+    )?.label : '—';
 
   const signaturesData = request.signatures.map((s) => ({
     id: s.id,
@@ -198,23 +206,26 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
       {/* ── Page header ── */}
       <header className="page-header sm:flex-row sm:items-start sm:justify-between">
+        <Button href="/requests" variant="secondary" size="sm">
+          Back to requests
+        </Button>
         <div>
           <h1 className="page-title">Request details</h1>
           <p className="page-subtitle">
             {request.requestNo} · {request.requestType} · {request.routingType}
           </p>
         </div>
-        <Button href="/requests" variant="secondary" size="sm">
-          Back to requests
-        </Button>
       </header>
 
       {/* ── Main card ── */}
       <section className="surface-card p-5">
         <div className="mb-5 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--text)]">Request profile</h2>
-          <span className={`badge ${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
-            {request.status}
+
+          <span><span className="text-md font-semibold text-[var(--text)]">Status</span>:&nbsp;
+            <span className={`${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
+              {request.status}
+            </span>
           </span>
         </div>
 
@@ -223,7 +234,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           {/* ── Documents ── */}
           <div>
             <SectionTitle title="Documents" />
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
+            <div className="mt-1  bg-white">
               <DocumentCards documents={documents} />
             </div>
           </div>
@@ -232,31 +243,37 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           <div>
             <SectionTitle title="General Information" />
             <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <DetailItem label="Request No"       value={request.requestNo} />
-              <DetailItem label="Request Type"     value={request.requestType} />
-              <DetailItem label="Routing Type"     value={request.routingType} />
-              <DetailItem label="Request Title"    value={request.requestTitle} />
-              <DetailItem label="Category"         value={request.category} />
-              <DetailItem label="Acknowledgement"  value={request.acknowledgement ? 'Yes' : 'No'} />
-              <DetailItem label="Requestor Name"   value={request.requestorName} />
-              <DetailItem label="Requestor Email"  value={request.requestorEmail} />
-              <DetailItem label="Company"          value={`${request.companyName} (${request.companyCode})`} />
-              <DetailItem label="Submitted At"     value={formatDateTime(request.submittedAt)} />
-              <DetailItem label="Created At"       value={formatDateTime(request.createdAt)} />
-              <DetailItem label="Updated At"       value={formatDateTime(request.updatedAt)} />
+              <DetailItem label="Request No" value={request.requestNo} />
+              <DetailItem label="Request Type" value={request.requestType} />
+              <DetailItem label="Routing Type" value={request.routingType} />
+              <DetailItem label="Request Title" value={request.requestTitle} />
+              <DetailItem label="Category" value={request.category} />
+              <DetailItem label="Acknowledgement" value={request.acknowledgement ? 'Yes' : 'No'} />
+              <DetailItem label="Requestor Name" value={request.requestorName} />
+              <DetailItem label="Requestor Email" value={request.requestorEmail} />
+              <DetailItem label="Company" value={`${request.companyName} (${request.companyCode})`} />
+              <DetailItem label="Submitted At" value={formatDateTime(request.submittedAt)} />
+              <DetailItem label="Created At" value={formatDateTime(request.createdAt)} />
+              <DetailItem label="Updated At" value={formatDateTime(request.updatedAt)} />
             </dl>
           </div>
 
           {/* ── RTP Details ── */}
+
           {request.rtp ? (
             <div>
               <SectionTitle title="RTP Details" />
               <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <DetailItem label="Client Name"        value={request.rtp.clientName} />
-                <DetailItem label="Registration Type"  value={request.rtp.registrationType} />
-                <DetailItem label="Project Name"       value={request.rtp.projectName} />
+                <DetailItem label="Client Name" value={request.rtp.clientName} />
+                <DetailItem label="Registration Type" value={registrationTypeLabel} />
+                <DetailItem label="Project Name" value={request.rtp.projectName} />
                 <DetailItem label="Tender Closing Date" value={formatDateTime(request.rtp.tenderClosingDate)} />
-                <DetailItem label="Special Project"    value={request.rtp.specialProject ? 'Yes' : 'No'} />
+                <DetailItem
+                  label="No. of Days"
+                  value={request.rtp.numberOfDaysAfterTenderClosingDate ?? '—'}
+                />
+                <DetailItem label="Validity Period" value={formatDateTime(request.rtp.validityPeriod)} />
+                <DetailItem label="Special Project" value={request.rtp.specialProject ? 'Yes' : 'No'} />
               </dl>
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -282,17 +299,20 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                       : request.pbl.project.projectName
                   }
                 />
-                <DetailItem label="Project Code"        value={request.pbl.projectCode || '—'} />
-                <DetailItem label="Procurement Method"  value={request.pbl.procurementMethod} />
+                <DetailItem label="Project Code" value={request.pbl.projectCode || '—'} />
+                <DetailItem label="Procurement Method" value={request.pbl.procurementMethod} />
               </dl>
+              {request.pbl?.justificationForLessBidders && (
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Justification For Less Bidders
                 </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
-                  {request.pbl.justificationForLessBidders || '—'}
-                </p>
+                
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
+                    {request.pbl.justificationForLessBidders}
+                  </p>
               </div>
+                )}
               <div className="mt-3">
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Bidders
@@ -342,14 +362,14 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                       : request.jvp.project.projectName
                   }
                 />
-                <DetailItem label="Project Code"              value={request.jvp.projectCode || '—'} />
-                <DetailItem label="Team Leader"               value={request.jvp.teamLeader || '—'} />
-                <DetailItem label="Financial Matters PIC"     value={request.jvp.financialMatters || '—'} />
-                <DetailItem label="Technical Matters PIC"     value={request.jvp.technicalMatters || '—'} />
-                <DetailItem label="Contract Matters PIC"      value={request.jvp.contractMatters || '—'} />
-                <DetailItem label="Procurement Matters PIC"   value={request.jvp.procurementMatters || '—'} />
-                <DetailItem label="Costing & Estimation PIC"  value={request.jvp.costingAndEstimationMatters || '—'} />
-                <DetailItem label="Implementation Stage"      value={request.jvp.implementationStage || '—'} />
+                <DetailItem label="Project Code" value={request.jvp.projectCode || '—'} />
+                <DetailItem label="Team Leader" value={request.jvp.teamLeader || '—'} />
+                <DetailItem label="Financial Matters PIC" value={request.jvp.financialMatters || '—'} />
+                <DetailItem label="Technical Matters PIC" value={request.jvp.technicalMatters || '—'} />
+                <DetailItem label="Contract Matters PIC" value={request.jvp.contractMatters || '—'} />
+                <DetailItem label="Procurement Matters PIC" value={request.jvp.procurementMatters || '—'} />
+                <DetailItem label="Costing & Estimation PIC" value={request.jvp.costingAndEstimationMatters || '—'} />
+                <DetailItem label="Implementation Stage" value={request.jvp.implementationStage || '—'} />
               </dl>
               <div className="mt-3 space-y-3">
                 <div className="rounded-lg border border-[var(--border)] bg-white p-3">
@@ -382,16 +402,18 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             status={request.status}
           />
 
-          <RequestSignatureSection
-            requestId={request.id}
-            status={request.status}
-            preparedMembers={preparedMembers}
-            confirmedMembers={confirmedMembers}
-            signatures={signaturesData}
-            currentUser={
-              currentUser ? { name: currentUser.name, email: currentUser.email } : null
-            }
-          />
+          {!isRtpRequest ? (
+            <RequestSignatureSection
+              requestId={request.id}
+              status={request.status}
+              preparedMembers={preparedMembers}
+              confirmedMembers={confirmedMembers}
+              signatures={signaturesData}
+              currentUser={
+                currentUser ? { name: currentUser.name, email: currentUser.email } : null
+              }
+            />
+          ) : null}
 
         </div>
       </section>

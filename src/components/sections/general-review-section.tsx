@@ -58,28 +58,18 @@ export default function GeneralReviewSection({
       <SectionTitle title="General Review" />
 
       <div className="mt-3 rounded-xl border border-[var(--border)] bg-white p-4">
-        <div className="space-y-5">
+        <div className="">
           {/* Verifier Comment Section */}
           {verifierComment && (
             <div className="rounded-lg bg-blue-50 p-4">
-              <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-blue-900">Verifier Comment</span>
                 <span className="text-xs text-blue-700">
                   by {verifierComment.verifiedBy} • {new Date(verifierComment.createdAt).toLocaleDateString()}
                 </span>
               </div>
               <p className="whitespace-pre-wrap text-sm text-[var(--text)]">{verifierComment.comment}</p>
-              {verifierComment.decisionCode?.trim() ? (
-                <div className="mt-3 border-t border-blue-200/80 pt-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-900/80">
-                    Decision code
-                  </p>
-                  <p className="mt-1 text-sm leading-snug text-[var(--text)]">
-                    {labelForStoredDecisionCode(verifierComment.decisionCode) ??
-                      verifierComment.decisionCode}
-                  </p>
-                </div>
-              ) : null}
+             
             </div>
           )}
 

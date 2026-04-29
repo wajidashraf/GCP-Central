@@ -57,18 +57,21 @@ export function stringifyJson(value: unknown) {
  * Status Badge Class Map
  * Maps request status to badge CSS classes
  */
+const BASE_BADGE_STYLE = 'rounded-[6px] bg-gray-700 text-white px-2 py-1';
 export const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
-  Draft: 'badge--neutral',
-  'Draft-Details': 'badge--neutral',
-  New: 'badge--info',
-  'In Review': 'badge--warning',
-  'Draft Review': 'badge--warning',
-  'Pending Review': 'badge--warning',
-  'Complete Review': 'badge--success',
-  'Pending Acceptance': 'badge--info',
-  Resubmit: 'badge--warning',
-  Acknowledged: 'badge--success',
-  Endorsed: 'badge--success',
-  'For Record': 'badge--neutral',
-  NC: 'badge--danger',
+  Draft: BASE_BADGE_STYLE,
+  'Draft-Details': BASE_BADGE_STYLE,
+  New: BASE_BADGE_STYLE,
+  FR: BASE_BADGE_STYLE,
+  Fs: BASE_BADGE_STYLE,
+  'In Review': BASE_BADGE_STYLE,
+  'Draft Review': BASE_BADGE_STYLE,
+  'Pending Review': BASE_BADGE_STYLE,
+  'Complete Review': BASE_BADGE_STYLE,
+  'Pending Acceptance': BASE_BADGE_STYLE,
+  Resubmit: BASE_BADGE_STYLE,
+  Acknowledged: BASE_BADGE_STYLE,
+  Endorsed: BASE_BADGE_STYLE,
+  'For Record': BASE_BADGE_STYLE,
+  NC: BASE_BADGE_STYLE,
 };
