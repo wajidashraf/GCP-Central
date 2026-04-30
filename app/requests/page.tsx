@@ -5,6 +5,7 @@ import Button from '@/src/components/ui/button';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
+import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import FilterBar from '@/src/components/requests/filterbar';
 
 
@@ -80,6 +81,10 @@ function buildVisibilityWhere(
     return {};
   }
 
+  if (hasRole(user, 'endorser')) {
+    return { status: REQUEST_STATUS_MAP.PENDING_ENDORSE.label };
+  }
+
   if (hasRole(user, 'hoc') && user.companyId) {
     return { companyId: user.companyId };
   }
@@ -100,6 +105,8 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   const sortBy = params.sortBy === 'requestNo' || params.sortBy === 'submitted' ? params.sortBy : 'submitted';
   const sortDir = params.sortDir === 'asc' || params.sortDir === 'desc' ? params.sortDir : 'desc';
   const visibilityWhere = buildVisibilityWhere(currentUser);
+
+  const canSeeBookEngagement = hasRole(currentUser, 'requestor') && hasRole(currentUser, 'admin') && selectedStatus === 'ready for engagement';
 
   let loadError = false;
   let requests: Array<{
@@ -302,7 +309,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                         <Button href={`/requests/${request.id}`} variant="primary" size="sm">
                           Open
                         </Button>
-                        {request.status === 'Ready for Engagement' && (
+                        {canSeeBookEngagement && (
                           <Button
                             href={`/requests/${request.id}/book-engagement`}
                             variant="accent"

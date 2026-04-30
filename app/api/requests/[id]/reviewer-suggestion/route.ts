@@ -2,11 +2,92 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
+import { sendEmail } from '@/lib/email/email-service';
+import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
 
 const SUGGESTION_ACTIONS = ['accepted', 'no_need', 'pending'] as const;
 const REVIEWER_SOURCE_ROLE = 'reviewer';
 const WORKING_GCPC_SOURCE_ROLE = 'working_gcpc';
 const DRAFT_REVIEW_STATUS = 'draft review';
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function dedupeEmails(emails: string[]) {
+  return [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+}
+
+async function notifyReviewersOfWorkingGcpcSuggestion(
+  requestId: string,
+  suggestionText: string,
+  submitterName: string,
+) {
+  const requestRecord = await prisma.request.findUnique({
+    where: { id: requestId },
+    select: {
+      requestNo: true,
+      requestTitle: true,
+      requestType: true,
+      routingType: true,
+      companyName: true,
+      companyCode: true,
+    },
+  });
+
+  if (!requestRecord) return;
+
+  const reviewerUsers = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      OR: [{ primaryRole: REVIEWER_SOURCE_ROLE }, { roles: { has: REVIEWER_SOURCE_ROLE } }],
+    },
+    select: { email: true },
+  });
+
+  const recipients = dedupeEmails(reviewerUsers.map((u) => u.email));
+  if (recipients.length === 0) return;
+
+  const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
+
+  // Strip basic HTML from suggestion text for safe embedding
+  const plainSuggestion = suggestionText.replace(/<[^>]*>/g, '').trim();
+
+  const detailsHtml = `
+    A Working GCPC user has added a suggestion regarding the request data. Please review.<br><br>
+    <strong>Request No:</strong> ${escapeHtml(requestRecord.requestNo)}<br>
+    <strong>Title:</strong> ${escapeHtml(requestRecord.requestTitle)}<br>
+    <strong>Type:</strong> ${escapeHtml(requestRecord.routingType)} / ${escapeHtml(requestRecord.requestType)}<br>
+    <strong>Company:</strong> ${escapeHtml(requestRecord.companyName)} (${escapeHtml(requestRecord.companyCode)})<br>
+    <strong>Submitted By:</strong> ${escapeHtml(submitterName)}<br><br>
+    <strong>Suggestion:</strong><br>
+    <blockquote style="border-left:4px solid #667eea;margin:8px 0;padding:8px 16px;background:#f3f4f6;">
+      ${escapeHtml(plainSuggestion)}
+    </blockquote>
+  `;
+
+  const subject = `Working GCPC suggestion on request: ${requestRecord.requestNo}`;
+  const html = getCustomTemplate(subject, detailsHtml, 'Review Request', requestUrl, 'GCP Central');
+
+  const result = await sendEmail({
+    to: recipients,
+    subject,
+    html,
+    text: htmlToPlainText(html),
+  });
+
+  if (!result.success) {
+    console.error('Reviewer notification for Working GCPC suggestion failed:', {
+      requestId,
+      error: result.error,
+    });
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -109,6 +190,15 @@ export async function POST(
         action: null,
       },
     });
+
+    // Notify all reviewers when a Working GCPC user submits a suggestion
+    if (isWorkingGcpcSuggestion) {
+      await notifyReviewersOfWorkingGcpcSuggestion(id, normalizedSuggestion, user.name).catch(
+        (emailError) => {
+          console.error('Reviewer notification failed on Working GCPC suggestion:', emailError);
+        },
+      );
+    }
 
     return NextResponse.json(reviewerSuggestion);
   } catch (error) {

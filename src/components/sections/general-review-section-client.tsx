@@ -20,6 +20,7 @@ interface ReviewerSuggestionType {
 
 interface GeneralReviewSectionClientProps {
   verifierComment?: VerifierCommentType | null;
+  reviewerDecisionCode?: string | null;
   reviewerSuggestions?: ReviewerSuggestionType[];
   workingGcpcSuggestions?: ReviewerSuggestionType[];
   userRole?: string;
@@ -29,6 +30,7 @@ interface GeneralReviewSectionClientProps {
 
 export default function GeneralReviewSectionClient({
   verifierComment,
+  reviewerDecisionCode = null,
   reviewerSuggestions = [],
   workingGcpcSuggestions = [],
   status,
@@ -38,6 +40,7 @@ export default function GeneralReviewSectionClient({
   return (
     <GeneralReviewSection
       verifierComment={verifierComment}
+      reviewerDecisionCode={reviewerDecisionCode}
       reviewerSuggestions={reviewerSuggestions}
       workingGcpcSuggestions={workingGcpcSuggestions}
       userRole={userRole}

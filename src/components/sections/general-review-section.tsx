@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { SectionTitle } from './request-form-shared';
 import ReviewerSuggestionsModal from '@/src/components/modals/reviewer-suggestions-modal';
-import { labelForStoredDecisionCode } from '@/src/constants/verifierDecisionCodes';
+import { labelForStoredDecisionCode } from '@/src/constants/reviewerDecisionCodes';
 
 interface VerifierCommentType {
   id: string;
@@ -24,6 +24,7 @@ interface ReviewerSuggestionType {
 
 interface GeneralReviewSectionProps {
   verifierComment?: VerifierCommentType | null;
+  reviewerDecisionCode?: string | null;
   reviewerSuggestions?: ReviewerSuggestionType[];
   workingGcpcSuggestions?: ReviewerSuggestionType[];
   userRole?: string;
@@ -33,6 +34,7 @@ interface GeneralReviewSectionProps {
 
 export default function GeneralReviewSection({
   verifierComment,
+  reviewerDecisionCode = null,
   reviewerSuggestions = [],
   workingGcpcSuggestions = [],
   userRole,
@@ -47,11 +49,16 @@ export default function GeneralReviewSection({
   const canSeeSuggestions = roleSet.has('reviewer') || roleSet.has('verifier') || roleSet.has('admin');
   const canSeeWorkingGcpcSuggestions = (roleSet.has('working_gcpc') || roleSet.has('verifier')) && normalizedStatus === 'draft review';
   /** Reviewer suggestions are relevant during open review (R) and after verifier marks draft review */
-  const showReviewerSuggestionsLink = normalizedStatus === 'r' 
+  const showReviewerSuggestionsLink = normalizedStatus === 'r';
+  const reviewerDecisionLabel = reviewerDecisionCode
+    ? labelForStoredDecisionCode(reviewerDecisionCode) ?? `Code ${reviewerDecisionCode}`
+    : null;
+    const showReviewerDecision = reviewerDecisionLabel && normalizedStatus !== 'w' && normalizedStatus !== 'ready for engagement' && normalizedStatus !== 'new' && normalizedStatus !== 'rs' && normalizedStatus !== 'fr' && normalizedStatus !== 'r';
 
-  if (!verifierComment && reviewerSuggestions.length === 0 && workingGcpcSuggestions.length === 0) {
+  if (!verifierComment && !reviewerDecisionLabel && reviewerSuggestions.length === 0 && workingGcpcSuggestions.length === 0) {
     return null;
   }
+  console.log(normalizedStatus)
 
   return (
     <div>
@@ -62,27 +69,41 @@ export default function GeneralReviewSection({
           {/* Verifier Comment Section */}
           {verifierComment && (
             <div className="rounded-lg bg-blue-50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-blue-900">Verifier Comment</span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-blue-900">Verifier Comment</span>
+
+                </div>
                 <span className="text-xs text-blue-700">
                   by {verifierComment.verifiedBy} • {new Date(verifierComment.createdAt).toLocaleDateString()}
                 </span>
               </div>
               <p className="whitespace-pre-wrap text-sm text-[var(--text)]">{verifierComment.comment}</p>
-             
+              {showReviewerDecision ? (
+                <>
+                  <hr className="my-2 border-t border-[var(--border)]" />
+                  <div className='py-2'>
+                    <span className="text-sm font-semibold text-blue-900">Reviewer Decision </span>
+                    <p className="px-2 py-0.5 font-medium text-gray-500">
+                      {reviewerDecisionLabel}
+                    </p>
+                  </div>
+                </>
+              ) : null}
             </div>
+
           )}
 
           {/* Reviewer Suggestions Section */}
           <div className="flex flex-wrap justify-end gap-2">
             {reviewerSuggestions.length > 0 && canSeeSuggestions && showReviewerSuggestionsLink && (
               <button
-                  type="button"
-                  onClick={() => setIsSuggestionsModalOpen(true)}
-                  aria-describedby="reviewer-suggestions-tooltip"
-                  className="animate-pulse-soft rounded-md border border-[#7A4D00] bg-[#F2CB7A] px-2 py-1 text-xs font-semibold text-[#3D2600] shadow-sm transition-colors duration-200 hover:bg-[#E6AC40]"
-                >
-                  ({reviewerSuggestions.length}) Reviewer Suggestions
+                type="button"
+                onClick={() => setIsSuggestionsModalOpen(true)}
+                aria-describedby="reviewer-suggestions-tooltip"
+                className="animate-pulse-soft rounded-md border border-[#7A4D00] bg-[#F2CB7A] px-2 py-1 text-xs font-semibold text-[#3D2600] shadow-sm transition-colors duration-200 hover:bg-[#E6AC40]"
+              >
+                ({reviewerSuggestions.length}) Reviewer Suggestions
               </button>
             )}
 

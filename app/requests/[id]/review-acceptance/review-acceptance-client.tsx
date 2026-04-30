@@ -47,11 +47,17 @@ function applyPayloadToFormState(payload: ReviewAcceptancePayload) {
 interface ReviewAcceptanceClientProps {
   requestId: string;
   initialData: ReviewAcceptancePayload;
+  currentUserName?: string | null;
 }
 
-export default function ReviewAcceptanceClient({ requestId, initialData }: ReviewAcceptanceClientProps) {
+export default function ReviewAcceptanceClient({
+  requestId,
+  initialData,
+  currentUserName = null,
+}: ReviewAcceptanceClientProps) {
   const router = useRouter();
   const [data, setData] = useState<ReviewAcceptancePayload>(initialData);
+  
 
   const [selectedCode, setSelectedCode] = useState<SelectedCode | ''>(() =>
     (initialData.form.selectedCode ?? '') as SelectedCode | ''
@@ -137,7 +143,46 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
   const showExceptions = selectedCode === '1b';
 
   const handlePrint = () => {
-    window.print();
+    const el = document.getElementById('review-acceptance-form');
+    if (!el) return;
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) return;
+
+    // Grab all stylesheets from the current page
+    const styles = Array.from(document.styleSheets)
+      .map((sheet) => {
+        try {
+          return Array.from(sheet.cssRules)
+            .map((rule) => rule.cssText)
+            .join('\n');
+        } catch {
+          // Cross-origin sheets (e.g. CDN fonts) can't be read
+          return sheet.href ? `@import url("${sheet.href}");` : '';
+        }
+      })
+      .join('\n');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Review Acceptance</title>
+          <style>${styles}</style>
+        </head>
+        <body>
+          ${el.outerHTML}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
   };
 
   const handleSubmit = async () => {
@@ -212,7 +257,7 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
     data.request.verifiedAt ?? data.latestEngagement?.updatedAt ?? null
   );
   const reviewNoDisplay = data.latestEngagement?.engagementNumber ?? '—';
-  const reviewLogNo = data.request.requestTitle || data.request.requestNo;
+  const reviewLogNo = data.request.requestNo || data.request.requestTitle;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 print:max-w-none">
@@ -225,7 +270,7 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
         </Button>
       </div>
 
-      <div className="rounded-lg border border-[var(--border)] bg-white shadow-sm">
+      <div className="rounded-lg border border-[var(--border)] bg-white shadow-sm" id="review-acceptance-form">
         <div className="border-b border-[var(--border)] px-5 py-4">
           <h1 className="text-lg font-bold tracking-wide text-[var(--text)]">REVIEW ACCEPTANCE</h1>
         </div>
@@ -358,9 +403,8 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
             <div
-              className={`flex min-h-[140px] flex-1 items-center justify-center rounded-lg border-2 border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-4 ${
-                hasServerSignature ? 'border-solid' : ''
-              }`}
+              className={`flex min-h-[140px] flex-1 items-center justify-center rounded-lg border-2 border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-4 ${hasServerSignature ? 'border-solid' : ''
+                }`}
             >
               {data.signature?.signUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- remote Cloudinary URL
@@ -376,6 +420,7 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
             <div className="relative flex-1 text-sm text-[var(--text-muted)]">
               <p>Accepted by</p>
               <p className="font-medium text-[var(--text)]">Head of Company</p>
+              <p className="font-medium text-[var(--text)]">{currentUserName || '—'}</p>
               <p>
                 Date:{' '}
                 <span className="text-[var(--text)]">
@@ -391,22 +436,20 @@ export default function ReviewAcceptanceClient({ requestId, initialData }: Revie
               <div className="mb-3 flex gap-2 border-b border-[var(--border)] pb-2">
                 <button
                   type="button"
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                    sigTab === 'draw'
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${sigTab === 'draw'
                       ? 'bg-[var(--brand-500)] text-white'
                       : 'bg-[var(--surface-muted)] text-[var(--text)]'
-                  }`}
+                    }`}
                   onClick={() => setSigTab('draw')}
                 >
                   Draw
                 </button>
                 <button
                   type="button"
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                    sigTab === 'upload'
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${sigTab === 'upload'
                       ? 'bg-[var(--brand-500)] text-white'
                       : 'bg-[var(--surface-muted)] text-[var(--text)]'
-                  }`}
+                    }`}
                   onClick={() => setSigTab('upload')}
                 >
                   Upload

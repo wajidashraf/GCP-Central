@@ -2,7 +2,7 @@ import Button from '@/src/components/ui/button';
 import RequestActionsSection from '@/src/components/sections/request-actions-section';
 import GeneralReviewSectionClient from '@/src/components/sections/general-review-section-client';
 import RequestSignatureSection from '@/src/components/sections/request-signature-section';
-import { DocumentCards, DocumentItem } from '@/src/components/sections/document-card';
+import { DocumentCard, DocumentCards, DocumentItem } from '@/src/components/sections/document-card';
 import {
   SectionTitle,
   DetailItem,
@@ -17,6 +17,7 @@ import { ensureCompleteReviewFromSignatures } from '@/src/lib/requests/ensure-co
 import { REGISTRATION_TYPES } from '@/src/constants/enums/procurement';
 import { PROCUREMENT_METHODS } from '@/src/constants/enums/procurement';
 import ImagePreviewTrigger from '@/src/components/sections/image-preview-trigger';
+import PrintButton from '@/src/components/ui/printButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -225,6 +226,19 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
   const canSeeWorkingGcpcSuggestions =
     hasCurrentUserRole('working_gcpc') || hasCurrentUserRole('verifier');
   const isRtpRequest = request.requestType.trim().toLowerCase() === 'rtp';
+  const normalizedRequestStatus = request.status.trim().toLowerCase();
+  const signatureHiddenStatuses = new Set(
+    [
+      REQUEST_STATUS_MAP.FR.label,
+      REQUEST_STATUS_MAP.NEW.label,
+      REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
+      REQUEST_STATUS_MAP.R.label,
+      REQUEST_STATUS_MAP.DRAFT_REVIEW.label,
+      REQUEST_STATUS_MAP.RS.label,
+    ].map((statusLabel) => statusLabel.toLowerCase()),
+  );
+  const shouldShowSignatureSection =
+    !isRtpRequest && !signatureHiddenStatuses.has(normalizedRequestStatus);
 
   const signatoryMembers = await prisma.signatoryMember.findMany({
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -266,40 +280,48 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
     signedAt: s.signedAt.toISOString(),
   }));
 
-  const addDecisionInitialComment =
-    getRequestReviewerComment(request) ?? request.verifierComment?.comment ?? request.verifierCommentText ?? null;
+  const addDecisionInitialComment = getRequestReviewerComment(request) ?? null;
+  const reviewerDecisionCode = getRequestReviewerDecisionCode(request);
   const addDecisionInitialCode = verifierDecisionCodePrefill(
-    getRequestReviewerDecisionCode(request) ?? request.verifierComment?.decisionCode,
-    request.verifierDecisionCode
+    reviewerDecisionCode,
+    null
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" >
 
       {/* ── Page header ── */}
       <header className="page-header sm:flex-row sm:items-start sm:justify-between">
-        <Button href="/requests" variant="secondary" size="sm">
-          Back to requests
-        </Button>
-        <div>
-          <h1 className="page-title">Request details</h1>
-          <p className="page-subtitle">
-            {request.requestNo} · {request.requestType} · {request.routingType}
-          </p>
+        <div className="flex items-center justify-between gap-2 w-full py-0">
+
+          <div>
+            <Button href="/requests" variant="secondary" size="sm">
+              Back to requests
+            </Button>
+          </div>
+          <div>
+            <PrintButton />
+          </div>
         </div>
       </header>
 
       {/* ── Main card ── */}
-      <section className="surface-card p-5">
+      <section className="surface-card p-5" id="request-detail-page">
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--text)]">Request profile</h2>
+          <div>
+            <h1 className="page-title">Request Profile</h1>
+            <h2 className="text-lg font-semibold text-gray-500">
+              {request.requestNo} · {request.requestType} · {request.routingType}
+            </h2>
+          </div>
 
-          <span><span className="text-md font-semibold text-[var(--text)]">Status</span>:&nbsp;
+          <div className="text-md font-semibold">
+            <span className="text-lg font-semibold text-[var(--text)]">Request Status</span>:&nbsp;&nbsp;
             <span className={`${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
               {request.status}
             </span>
-          </span>
+          </div>
         </div>
 
         <div className="space-y-5">
@@ -530,14 +552,15 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                           alt={request.jvp.cashflowForecastFileName ?? 'Cashflow forecast preview'}
                         />
                       ) : (
-                        <a
-                          href={request.jvp.cashflowForecastUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:bg-[var(--surface-soft)]"
-                        >
-                          Preview {request.jvp.cashflowForecastFileName ?? 'Cashflow file'}
-                        </a>
+                        <DocumentCard
+                          doc={{
+                            label: 'Cashflow file',
+                            url: request.jvp.cashflowForecastUrl,
+                            fileName:
+                              request.jvp.cashflowForecastFileName ??
+                              getDisplayFileNameFromUrl(request.jvp.cashflowForecastUrl),
+                          }}
+                        />
                       )}
                     </div>
                   ) : (
@@ -556,14 +579,15 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                           alt={request.jvp.costStructureFileName ?? 'Cost structure preview'}
                         />
                       ) : (
-                        <a
-                          href={request.jvp.costStructureUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:bg-[var(--surface-soft)]"
-                        >
-                          Preview {request.jvp.costStructureFileName ?? 'Cost structure file'}
-                        </a>
+                        <DocumentCard
+                          doc={{
+                            label: 'Cost structure file',
+                            url: request.jvp.costStructureUrl,
+                            fileName:
+                              request.jvp.costStructureFileName ??
+                              getDisplayFileNameFromUrl(request.jvp.costStructureUrl),
+                          }}
+                        />
                       )}
                     </div>
                   ) : (
@@ -627,16 +651,19 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           ) : null}
 
           {/* ── General Review ── */}
-          <GeneralReviewSectionClient
-            verifierComment={verifierCommentData}
-            reviewerSuggestions={canSeeReviewerSuggestions ? reviewerSuggestions : []}
-            workingGcpcSuggestions={canSeeWorkingGcpcSuggestions ? workingGcpcSuggestions : []}
-            userRole={currentUser?.role}
-            userRoles={currentUser?.roles}
-            status={request.status}
-          />
+          {request.status !== 'new' ?
+            <GeneralReviewSectionClient
+              verifierComment={verifierCommentData}
+              reviewerDecisionCode={reviewerDecisionCode}
+              reviewerSuggestions={canSeeReviewerSuggestions ? reviewerSuggestions : []}
+              workingGcpcSuggestions={canSeeWorkingGcpcSuggestions ? workingGcpcSuggestions : []}
+              userRole={currentUser?.role}
+              userRoles={currentUser?.roles}
+              status={request.status}
+            />
+            : null}
 
-          {!isRtpRequest && request.status === 'complete review' ? (
+          {shouldShowSignatureSection ? (
             <RequestSignatureSection
               requestId={request.id}
               status={request.status}

@@ -42,7 +42,6 @@ export default function RequestActionsSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedStatus = status.trim().toLowerCase();
-  console.log('normalizedStatus', normalizedStatus);
   const normalizedRequestType = requestType.trim().toLowerCase();
   const isRtpRequest =
     normalizedRequestType === 'rtp' ||
@@ -59,14 +58,12 @@ export default function RequestActionsSection({
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
   const canVerifyRtp = canActAsVerifier && ['new', 'rs'].includes(normalizedStatus);
   const canReview = canActAsReviewer && normalizedStatus === 'r';
-  // const canMarkReviewAsDraft = canActAsVerifier && reviewerSuggestionsCount > 0 && normalizedStatus === 'r' && !isFrOrRs;
-  const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'pending review';
-  const canMarkAsPendingReview = canActAsVerifier && workingGcpcSuggestionsCount > 0 && normalizedStatus === 'pending review';
+  const canReviewAsWorkingGcpc = canActAsWorkingGcpc && normalizedStatus === 'draft review';
+  const canMarkAsPendingReview = canActAsReviewer && workingGcpcSuggestionsCount > 0 && normalizedStatus === 'draft review';
   const canBookEngagement = canActAsRequestor && ['ready for engagement'].includes(normalizedStatus);
   const canMoveToPendingAcceptance =
     (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'complete review';
-  const canOpenEndorsement =
-    (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'pending endorse';
+  const canOpenEndorsement = (hasRole('endorser') ||  hasRole('admin')) && normalizedStatus === 'pending endorse';
   const canOpenAcknowledgement =
     (hasRole('admin') || hasRole('hoc')) && normalizedStatus === 'pending ack';
 
@@ -110,14 +107,14 @@ export default function RequestActionsSection({
     }
   };
 
-  const handleMarkReviewAsDraft = async () => {
+  const handleMarkAsPendingReview = async () => {
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/requests/${requestId}/draft-review`, {
+      const response = await fetch(`/api/requests/${requestId}/pending-review`, {
         method: 'POST',
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || 'Failed to mark review as draft');
+      if (!response.ok) throw new Error(payload?.error || 'Failed to change to Pending Review');
       router.refresh();
     } catch (error) {
       throw error;
@@ -126,10 +123,10 @@ export default function RequestActionsSection({
     }
   };
 
-  const handleAddDecisionSubmit = async (data: { comment: string; decisionCode: string }) => {
+  const handleSubmitReviewerDecision = async (data: { comment: string; decisionCode: string }) => {
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/requests/${requestId}/pending-review`, {
+      const response = await fetch(`/api/requests/${requestId}/draft-review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,7 +135,7 @@ export default function RequestActionsSection({
         }),
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || 'Failed to submit decision');
+      if (!response.ok) throw new Error(payload?.error || 'Failed to submit reviewer decision');
       setAddDecisionModalOpen(false);
       router.refresh();
     } catch (error) {
@@ -189,6 +186,7 @@ export default function RequestActionsSection({
     canVerify ||
     canReview ||
     canReviewAsWorkingGcpc ||
+    canMarkAsPendingReview ||
     canBookEngagement ||
     canMoveToPendingAcceptance ||
     canOpenEndorsement ||
@@ -207,7 +205,7 @@ export default function RequestActionsSection({
               size="sm"
               onClick={() => setVerifyModalOpen(true)}
             >
-              Review Data
+              Verify Data
             </Button>
           )}
           {canReviewAsWorkingGcpc && (
@@ -216,13 +214,19 @@ export default function RequestActionsSection({
               size="sm"
               onClick={() => openReviewModal('working_gcpc')}
             >
-              Review Request Data
+              Add Suggestion
             </Button>
           )}
 
           {canReview && (
             <Button variant="primary" size="sm" disabled={isSubmitting} onClick={() => setAddDecisionModalOpen(true)}>
-              Add decision
+              Add Decision Code
+            </Button>
+          )}
+
+          {canMarkAsPendingReview && (
+            <Button variant="accent" size="sm" disabled={isSubmitting} onClick={handleMarkAsPendingReview}>
+              {isSubmitting ? 'Processing...' : 'Change to Pending Review'}
             </Button>
           )}
 
@@ -277,7 +281,7 @@ export default function RequestActionsSection({
       <AddDecisionModal
         isOpen={addDecisionModalOpen}
         onClose={() => !isSubmitting && setAddDecisionModalOpen(false)}
-        onSubmit={handleAddDecisionSubmit}
+        onSubmit={handleSubmitReviewerDecision}
         requestType={requestType}
         initialComment={initialReviewerComment}
         initialDecisionCode={initialReviewerDecisionCode}

@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@/src/components/ui/button';
-import { getVerifierDecisionCodesForRequestType } from '@/src/constants/verifierDecisionCodes';
+import { getReviewerDecisionCodesForRequestType as getReviewerDecisionCodesForRequestType } from '@/src/constants/reviewerDecisionCodes';
 
 interface AddDecisionModalProps {
   isOpen: boolean;
@@ -33,7 +33,7 @@ export default function AddDecisionModal({
   isLoading = false,
 }: AddDecisionModalProps) {
   const options = useMemo(
-    () => getVerifierDecisionCodesForRequestType(requestType),
+    () => getReviewerDecisionCodesForRequestType(requestType),
     [requestType]
   );
 
@@ -231,10 +231,10 @@ export default function AddDecisionModal({
       >
         <div className="border-b border-[var(--border)] px-6 py-4">
           <h2 id="add-decision-title" className="text-xl font-bold text-[var(--text)]">
-            Add decision
+            Add reviewer decision
           </h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Enter your reviewer comment and decision code. Submitting will move this request to Pending
+            Enter your reviewer comment and decision code. Submitting will move this request to Draft
             Review.
           </p>
         </div>

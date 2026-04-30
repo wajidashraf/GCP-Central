@@ -1,0 +1,21 @@
+@media print {
+  /* Hide everything by default */
+  body > * { display: none !important; }
+
+  /* Show only the main card */
+  #request-detail-card,
+  #request-detail-card * {
+    display: revert !important;
+    visibility: visible !important;
+  }
+
+  #request-detail-card {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 16px;
+    border: none;
+    box-shadow: none;
+    overflow: auto;
+  }
+}

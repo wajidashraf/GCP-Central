@@ -16,6 +16,7 @@ export const REQUEST_STATUS: SelectOption<number>[] = [
   { value: 2, label: 'Ready for Engagement' },
   { value: 3, label: 'R' },
   { value: 4, label: 'Draft Review' },
+  { value: 16, label: 'RS' },
   { value: 5, label: 'Pending Review' },
   { value: 6, label: 'Complete Review' },
   { value: 7, label: 'Pending Acceptance' },
@@ -27,11 +28,12 @@ export const REQUEST_STATUS: SelectOption<number>[] = [
   { value: 13, label: 'Submitted' },
   { value: 14, label: 'Under Verification' },
   { value: 15, label: 'Scheduled' },
-  { value: 16, label: 'RS' },
   { value: 17, label: 'NC3' },
   { value: 18, label: 'NC4' },
   { value: 19, label: 'W' },
 ] as const;
+
+
 
 /**
  * Map format for request status lookups

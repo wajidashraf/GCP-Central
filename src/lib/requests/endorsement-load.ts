@@ -39,6 +39,7 @@ export type EndorsementPayload = {
   request: {
     id: string;
     requestNo: string;
+    companyCode: string;
     requestTitle: string;
     requestType: string;
     companyName: string;
@@ -100,6 +101,15 @@ function procurementMethodLabel(value: number | null | undefined) {
   return `Procurement method ${value}`;
 }
 
+function normalizeRefPart(value: string | null | undefined, fallback: string) {
+  const cleaned = (value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\//g, "-")
+    .toUpperCase();
+  return cleaned || fallback;
+}
+
 export async function loadEndorsement(
   requestIdRaw: string | undefined,
   user: CurrentUser | null
@@ -122,6 +132,7 @@ export async function loadEndorsement(
       requestTitle: true,
       companyId: true,
       companyName: true,
+      companyCode: true,
       status: true,
       verifiedAt: true,
       hocReviewAcceptanceSignedAt: true,
@@ -189,7 +200,7 @@ export async function loadEndorsement(
   const kind = getRequestTypeKind(request.requestType);
   const projectCode = getProjectCode(request);
   const typeRef = kind === "GENERIC" ? request.requestType.trim().toUpperCase() || "REQ" : kind;
-  const endorsementNo = `${projectCode}/${request.requestTitle || request.requestNo}/${typeRef}/E`;
+  const endorsementNo = `${normalizeRefPart(request.companyCode, "COMP")}/${normalizeRefPart(projectCode, "PROJECT")}/${normalizeRefPart(typeRef, "REQ")}/${normalizeRefPart(request.requestNo, "REQUEST")}/E`;
 
   return {
     ok: true,
@@ -197,6 +208,7 @@ export async function loadEndorsement(
       request: {
         id: request.id,
         requestNo: request.requestNo,
+        companyCode: request.companyCode,
         requestTitle: request.requestTitle,
         requestType: request.requestType,
         companyName: request.companyName,

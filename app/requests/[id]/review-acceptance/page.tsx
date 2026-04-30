@@ -30,5 +30,11 @@ export default async function ReviewAcceptancePage({ params }: PageProps) {
     );
   }
 
-  return <ReviewAcceptanceClient requestId={id.trim()} initialData={result.data} />;
+  return (
+    <ReviewAcceptanceClient
+      requestId={id.trim()}
+      initialData={result.data}
+      currentUserName={user?.name ?? null}
+    />
+  );
 }
