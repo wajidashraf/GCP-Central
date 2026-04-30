@@ -55,6 +55,7 @@ type RtpMultiStepFormProps = {
   channel: "gcpc" | "gcp";
   requestTitle: string;
   requestor: RequestorContext;
+  canSubmitRequest: boolean;
 };
 
 const MAX_FILE_SIZE_MB = RTP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
@@ -110,6 +111,7 @@ export default function RtpMultiStepForm({
   channel,
   requestTitle,
   requestor,
+  canSubmitRequest,
 }: RtpMultiStepFormProps) {
   const router = useRouter();
   const category = useMemo(() => channel.toUpperCase() as "GCP" | "GCPC", [channel]);
@@ -613,9 +615,11 @@ export default function RtpMultiStepForm({
             <Button type="button" variant="secondary" onClick={() => setCurrentStep(2)} disabled={isBusy || isSubmitted}>
               Previous
             </Button>
-            <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
-              {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit RTP"}
-            </Button>
+            {canSubmitRequest ? (
+              <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
+                {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit RTP"}
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}

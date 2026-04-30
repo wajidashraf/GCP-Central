@@ -26,6 +26,7 @@ export type AcknowledgementPayload = {
   request: {
     id: string;
     requestNo: string;
+    companyCode: string;
     requestTitle: string;
     requestType: string;
     companyName: string;
@@ -68,6 +69,15 @@ function getProjectData(request: {
   return { projectName, projectCode };
 }
 
+function normalizeRefPart(value: string | null | undefined, fallback: string) {
+  const cleaned = (value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\//g, "-")
+    .toUpperCase();
+  return cleaned || fallback;
+}
+
 export async function loadAcknowledgement(
   requestIdRaw: string | undefined,
   user: CurrentUser | null
@@ -89,6 +99,7 @@ export async function loadAcknowledgement(
       requestTitle: true,
       requestType: true,
       companyId: true,
+      companyCode: true,
       companyName: true,
       status: true,
       ackLetterTextContent: true,
@@ -135,6 +146,8 @@ export async function loadAcknowledgement(
   }
 
   const project = getProjectData(request);
+  const matterType = request.requestType.trim().toUpperCase() || "REQ";
+  const acknowledgementNo = `${normalizeRefPart(request.companyCode, "COMP")}/${normalizeRefPart(project.projectCode, "PROJECT")}/${normalizeRefPart(matterType, "REQ")}/${normalizeRefPart(request.requestNo, "REQUEST")}/ACK`;
 
   return {
     ok: true,
@@ -142,6 +155,7 @@ export async function loadAcknowledgement(
       request: {
         id: request.id,
         requestNo: request.requestNo,
+        companyCode: request.companyCode,
         requestTitle: request.requestTitle,
         requestType: request.requestType,
         companyName: request.companyName,
@@ -149,7 +163,7 @@ export async function loadAcknowledgement(
         ackLetterTextContent: request.ackLetterTextContent,
       },
       acknowledgement: {
-        no: `${request.requestTitle || request.requestNo}/${project.projectCode}`,
+        no: acknowledgementNo,
         subtitle: "(For Variation Order / Payment / EOT / L&E)",
         projectName: project.projectName,
         projectCode: project.projectCode,

@@ -97,6 +97,7 @@ type PblMultiStepFormProps = {
   requestor: RequestorContext;
   projects: ReadonlyArray<ProjectOption>;
   companies: ReadonlyArray<CompanyOption>;
+  canSubmitRequest: boolean;
 };
 
 const MAX_FILE_SIZE_MB = RTP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
@@ -189,6 +190,7 @@ export default function PblMultiStepForm({
   requestor,
   projects,
   companies,
+  canSubmitRequest,
 }: PblMultiStepFormProps) {
   const router = useRouter();
   const category = useMemo(() => channel.toUpperCase() as "GCP" | "GCPC", [channel]);
@@ -1006,9 +1008,11 @@ export default function PblMultiStepForm({
             <Button type="button" variant="secondary" onClick={() => setCurrentStep(3)} disabled={isBusy || isSubmitted}>
               Previous
             </Button>
-            <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
-              {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit PBL"}
-            </Button>
+            {canSubmitRequest ? (
+              <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
+                {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit PBL"}
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}

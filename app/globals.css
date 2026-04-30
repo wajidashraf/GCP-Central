@@ -141,9 +141,9 @@ textarea {
 }
 
 .badge--neutral {
-  background: #c8def5;
+  background: #eae9e9;
   color: #334155;
-  border-color: #bcd8fc;
+  border-color: #cdcbcb;
 }
 
 .badge--success {

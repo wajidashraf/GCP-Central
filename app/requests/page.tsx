@@ -15,16 +15,31 @@ const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Draft: 'badge--neutral',
   'Draft-Details': 'badge--neutral',
   New: 'badge--primary',
+  Submitted: 'badge--primary',
+  Scheduled: 'badge--primary',
+  'Under Verification': 'badge--warning',
   'In Review': 'badge--warning',
   Resubmit: 'badge--warning',
-  RS: 'badge--warning',           // ReSubmit short code
+  RS: 'badge--warning', // ReSubmit short code
+  'Ready for Engagement': 'badge--info',
+  'Pending Review': 'badge--warning',
+  'Draft Review': 'badge--warning',
+  'Complete Review': 'badge--success',
+  'Pending Acceptance': 'badge--warning',
+  'Complete Acceptance': 'badge--success',
+  'Pending Endorse': 'badge--warning',
+  'Pending Ack': 'badge--warning',
+  ACK: 'badge--success',
   Acknowledged: 'badge--success',
+  E: 'badge--success',
   Endorsed: 'badge--success',
   'For Record': 'badge--neutral',
-  FR: 'badge--neutral',           // For Record short code
+  FR: 'badge--neutral', // For Record short code
   NC: 'badge--danger',
-  R: 'badge--info',               // Ready for Review short code
-  'Ready for Engagement': 'badge--success',
+  NC3: 'badge--danger',
+  NC4: 'badge--danger',
+  W: 'badge--danger',
+  R: 'badge--info', // Ready for Review short code
 };
 
 // Maps short DB codes → human-readable display labels
@@ -81,15 +96,29 @@ function buildVisibilityWhere(
     return {};
   }
 
-  if (hasRole(user, 'endorser')) {
-    return { status: REQUEST_STATUS_MAP.PENDING_ENDORSE.label };
+  const scopedFilters: Prisma.RequestWhereInput[] = [];
+
+  if (hasRole(user, 'requestor')) {
+    scopedFilters.push({ requestorId: user.id });
   }
 
   if (hasRole(user, 'hoc') && user.companyId) {
-    return { companyId: user.companyId };
+    scopedFilters.push({ companyId: user.companyId });
   }
 
-  return { requestorId: user.id };
+  if (hasRole(user, 'endorser')) {
+    scopedFilters.push({ status: REQUEST_STATUS_MAP.PENDING_ENDORSE.label });
+  }
+
+  if (scopedFilters.length === 0) {
+    return { requestorId: user.id };
+  }
+
+  if (scopedFilters.length === 1) {
+    return scopedFilters[0];
+  }
+
+  return { OR: scopedFilters };
 }
 
 export default async function RequestsPage({ searchParams }: RequestsPageProps) {
@@ -105,6 +134,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   const sortBy = params.sortBy === 'requestNo' || params.sortBy === 'submitted' ? params.sortBy : 'submitted';
   const sortDir = params.sortDir === 'asc' || params.sortDir === 'desc' ? params.sortDir : 'desc';
   const visibilityWhere = buildVisibilityWhere(currentUser);
+  const canCreateRequest = hasRole(currentUser, 'requestor');
 
   const canSeeBookEngagement = hasRole(currentUser, 'requestor') && hasRole(currentUser, 'admin') && selectedStatus === 'ready for engagement';
 
@@ -121,6 +151,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     rtp: { projectName: string } | null;
     pbl: { project: { projectName: string } } | null;
     jvp: { project: { projectName: string } } | null;
+    rpp: { project: { projectName: string } } | null;
   }> = [];
 
   const HIDDEN_STATUSES = ['Draft', 'Draft-Details'] as const;
@@ -173,6 +204,15 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
           },
         },
         jvp: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        rpp: {
           select: {
             project: {
               select: {
@@ -236,9 +276,11 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
             Inspect procurement submissions, apply role-based actions, and monitor lifecycle status.
           </p>
         </div>
-        <Button href="/submit" variant="primary" size="sm">
-          + New Request
-        </Button>
+        {canCreateRequest ? (
+          <Button href="/submit" variant="primary" size="sm">
+            + New Request
+          </Button>
+        ) : null}
       </header>
 
       {loadError ? (
@@ -289,6 +331,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                   request.rtp?.projectName ??
                   request.pbl?.project?.projectName ??
                   request.jvp?.project?.projectName ??
+                  request.rpp?.project?.projectName ??
                   '—';
                 const typeWithChannel = `${request.requestType} - ${request.routingType}`;
 

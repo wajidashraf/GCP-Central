@@ -60,6 +60,7 @@ type JvpMultiStepFormProps = {
   requestTitle: string;
   requestor: RequestorContext;
   projects: ReadonlyArray<ProjectOption>;
+  canSubmitRequest: boolean;
 };
 
 type PersistedJvpFormState = {
@@ -197,6 +198,7 @@ export default function JvpMultiStepForm({
   requestTitle,
   requestor,
   projects,
+  canSubmitRequest,
 }: JvpMultiStepFormProps) {
   const router = useRouter();
   const category = useMemo(() => channel.toUpperCase() as "GCP" | "GCPC", [channel]);
@@ -1530,9 +1532,11 @@ export default function JvpMultiStepForm({
             <Button type="button" variant="secondary" onClick={() => setCurrentStep(6)} disabled={isBusy || isSubmitted}>
               Previous
             </Button>
-            <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
-              {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit JVP"}
-            </Button>
+            {canSubmitRequest ? (
+              <Button type="button" onClick={handleFinalSubmit} loading={isBusy || isSubmitted}>
+                {isSubmitted ? "Submitted" : isBusy ? "Submitting..." : "Submit JVP"}
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}

@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 const GCPC_FORMS = [
   { code: 'RTP', label: 'Registration of Tender/Proposal' },
@@ -24,7 +27,15 @@ const GCP_FORMS = [
 const getFormHref = (channel: 'gcpc' | 'gcp', formCode: string) =>
   `/submit/${channel}/${encodeURIComponent(formCode)}`;
 
-export default function SubmitPage() {
+export default async function SubmitPage() {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    redirect('/login?callbackUrl=/submit');
+  }
+  if (!hasRole(currentUser, 'requestor')) {
+    redirect('/requests');
+  }
+
   return (
     <div className="space-y-6">
       <header className="page-header">

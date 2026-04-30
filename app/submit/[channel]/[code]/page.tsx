@@ -5,6 +5,7 @@ import { PBL_FORM_CODE, PBL_REQUEST_TITLE } from '@/lib/validations/pbl';
 import { RPP_FORM_CODE, RPP_REQUEST_TITLE } from '@/lib/validations/rpp';
 import { RTP_FORM_CODE, RTP_REQUEST_TITLE } from '@/lib/validations/rtp';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 import JvpMultiStepForm from './_components/jvp-multi-step-form';
 import PblMultiStepForm from './_components/pbl-multi-step-form';
 import RppMultiStepForm from './_components/rpp-multi-step-form';
@@ -47,6 +48,24 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
         </div>
       );
     }
+
+    if (!hasRole(user, 'requestor')) {
+      return (
+        <div className="space-y-6">
+          <header className="page-header">
+            <h1 className="page-title">Not authorised</h1>
+            <p className="page-subtitle">Only requestors can create requests.</p>
+          </header>
+          <Link
+            href="/requests"
+            className="inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium text-[var(--text)] transition hover:border-[var(--border-strong)]"
+          >
+            Back to requests
+          </Link>
+        </div>
+      );
+    }
+    const canSubmitRequest = hasRole(user, 'requestor') || hasRole(user, 'admin');
 
     const preferredCompany = user.companyCode
       ? await prisma.company.findUnique({
@@ -91,6 +110,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
           <RtpMultiStepForm
             channel={normalizedChannel}
             requestTitle={RTP_REQUEST_TITLE}
+            canSubmitRequest={canSubmitRequest}
             requestor={{
               id: user.id,
               name: user.name,
@@ -141,6 +161,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
           <PblMultiStepForm
             channel={normalizedChannel}
             requestTitle={PBL_REQUEST_TITLE}
+            canSubmitRequest={canSubmitRequest}
             requestor={{
               id: user.id,
               name: user.name,
@@ -189,6 +210,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
           <RppMultiStepForm
             channel={normalizedChannel}
             requestTitle={RPP_REQUEST_TITLE}
+            canSubmitRequest={canSubmitRequest}
             requestor={{
               id: user.id,
               name: user.name,
@@ -232,6 +254,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
         <JvpMultiStepForm
           channel={normalizedChannel}
           requestTitle={JVP_REQUEST_TITLE}
+          canSubmitRequest={canSubmitRequest}
           requestor={{
             id: user.id,
             name: user.name,
