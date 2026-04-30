@@ -8,20 +8,20 @@ const GCPC_FORMS = [
   { code: 'RTP', label: 'Registration of Tender/Proposal' },
   { code: 'PBL', label: 'Prospective Bidders List' },
   { code: 'JVP', label: 'Joint Venture Partnership' },
-  { code: 'ST/SP', label: 'Subcontracting / Special Purpose' },
+  { code: 'STSP', label: 'Submission of Tender / Proposal' },
   { code: 'CAA', label: 'Contract Award Acknowledgement' },
   { code: 'PCCA', label: 'Post-Contract Cost Analysis' },
-  { code: 'PP', label: 'Post-Proposal' },
-  { code: 'VAP', label: 'Value Added Proposal' },
-  { code: 'Others', label: 'Other Procurement Matters' },
+  { code: 'PP', label: 'Procurement Plan' },
+  { code: 'VAP', label: 'Vendor Appointment and Procurement' },
+  { code: 'Others', label: 'Other' },
 ];
 
 const GCP_FORMS = [
   { code: 'RPP', label: 'Revised Procurement Plan' },
-  { code: 'R-PCCA', label: 'Revised Post-Contract Cost Analysis' },
-  { code: 'CI', label: 'Contractual Issues' },
-  { code: 'CPR', label: 'Contract Progress Report' },
-  { code: 'Others', label: 'Other Contract Matters' },
+  { code: 'R-PCCA', label: 'Revised PCCA' },
+  { code: 'CI', label: 'Contractual Issue Relating to Payment' },
+  { code: 'CPR', label: 'Monthly Information Update (cut off 25th of the month, submission latest by 15th of the next month)' },
+  { code: 'Others', label: 'Other' },
 ];
 
 const getFormHref = (channel: 'gcpc' | 'gcp', formCode: string) =>

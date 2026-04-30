@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Button from '@/src/components/ui/button';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 
@@ -76,6 +76,8 @@ export default function VerifyModal({
       isRequestType(
         'registration of tender',
         'client - acceptance of award',
+        'r-pcca',
+        'rpcca',
         'revised pcca',
         'contractual issue',
         'gcp - others',
@@ -88,7 +90,7 @@ export default function VerifyModal({
       if (idx >= 0) baseOptions.splice(idx, 1);
     }
 
-    if (isRequestType('revised pcca', 'contractual issue', 'gcp - others', 'revised procurement plan')) {
+    if (isRequestType('r-pcca', 'rpcca', 'revised pcca', 'contractual issue', 'gcp - others', 'revised procurement plan')) {
       addOption({
         value: REQUEST_STATUS_MAP.PENDING_ACK.label,
         label: REQUEST_STATUS_MAP.PENDING_ACK.label,
@@ -110,16 +112,15 @@ export default function VerifyModal({
     return [...statusOptions, { value: currentStatus, label: currentStatus }];
   }, [currentStatus, statusOptions]);
 
-  // Auto-select a valid option whenever the modal opens or options/status change.
-  useEffect(() => {
-    if (selectableOptions.length === 0) return;
-  
+  const effectiveRequestStatus = useMemo(() => {
+    if (requestStatus && selectableOptions.some((option) => option.value === requestStatus)) {
+      return requestStatus;
+    }
     const matchedOption = selectableOptions.find(
       (opt) => opt.value.toLowerCase() === currentStatus?.trim().toLowerCase()
     );
-  
-    setRequestStatus(matchedOption ? matchedOption.value : selectableOptions[0].value);
-  }, [ selectableOptions, currentStatus]);
+    return matchedOption ? matchedOption.value : selectableOptions[0]?.value ?? '';
+  }, [currentStatus, requestStatus, selectableOptions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,17 +130,17 @@ export default function VerifyModal({
       setError('Please enter a comment');
       return;
     }
-    if (!requestStatus) {
+    if (!effectiveRequestStatus) {
       setError('Please select a request status');
       return;
     }
-    if (requestStatus.toLowerCase() === REQUEST_STATUS_MAP.NEW.label.toLowerCase()) {
+    if (effectiveRequestStatus.toLowerCase() === REQUEST_STATUS_MAP.NEW.label.toLowerCase()) {
       setError('Please select a status different from New');
       return;
     }
 
     try {
-      await onSubmit({ comment, requestStatus });
+      await onSubmit({ comment, requestStatus: effectiveRequestStatus });
       setComment('');
       setRequestStatus('');
       onClose();
@@ -162,7 +163,7 @@ export default function VerifyModal({
             </label>
             <select
               id="requestStatus"
-              value={requestStatus}
+              value={effectiveRequestStatus}
               onChange={(e) => setRequestStatus(e.target.value)}
               className="w-full rounded-lg border border-[var(--border)] bg-white p-3 text-sm text-[var(--text)] focus:border-[var(--brand-500)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-100)]"
               disabled={isLoading}

@@ -298,9 +298,9 @@ export default function PblMultiStepForm({
         ...current,
         projectId: selectedProject.id,
         projectCode: selectedProject.projectCode.trim(),
-        companyId: selectedProject.companyId,
-        companyCode: selectedProject.companyCode,
-        companyName: selectedProject.companyName,
+        companyId: requestor.companyId,
+        companyCode: requestor.companyCode,
+        companyName: requestor.companyName,
       }));
     },
     [projects, requestor.companyCode, requestor.companyId, requestor.companyName]

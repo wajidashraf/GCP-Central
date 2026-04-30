@@ -17,6 +17,37 @@ The page is a **server component** that:
 
 ---
 
+## Submit Forms: Project & Company Rule
+
+This rule applies to multi-step submit forms that have a **Project Details** step.
+
+### Previous Logic (before fix)
+
+- When a user changed **Project Name**, the form auto-filled:
+  - `projectId`
+  - `projectCode`
+  - `companyId`
+  - `companyCode`
+  - `companyName`
+- Because of that, **Company** changed based on the selected project.
+
+### New Logic (current behavior)
+
+- When a user changes **Project Name**, the form now updates only:
+  - `projectId`
+  - `projectCode`
+- **Company** is always read-only and always kept from the logged-in requestor context:
+  - `requestor.companyId`
+  - `requestor.companyCode`
+  - `requestor.companyName`
+
+### Why
+
+- The submitting request should always remain under the submitter's company context.
+- Project selection must not silently switch company ownership on the request.
+
+---
+
 ## Role Definitions
 
 | Role | Description |

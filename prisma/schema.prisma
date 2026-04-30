@@ -94,6 +94,12 @@ model Request {
   rtp                  RtpRequest?
   pbl                  PblRequest?
   jvp                  JvpRequest?
+  stsp                 StspRequest?
+  caa                  CaaRequest?
+  pcca                 PccaRequest?
+  pp                   PpRequest?
+  vap                  VapRequest?
+  other                OtherRequest?
   rpp                  RppRequest?
   projects             Project[]
   verifierComment      VerifierComment?
@@ -123,6 +129,12 @@ model Project {
   rtpRequests RtpRequest[]
   pblRequests PblRequest[]
   jvpRequests JvpRequest[]
+  stspRequests StspRequest[]
+  caaRequests CaaRequest[]
+  pccaRequests PccaRequest[]
+  ppRequests PpRequest[]
+  vapRequests VapRequest[]
+  otherRequests OtherRequest[]
   rppRequests RppRequest[]
 
   @@index([companyId])
@@ -239,6 +251,197 @@ model RppRequest {
   documentSizeBytes Int?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model StspRequest {
+  id                               String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId                        String   @unique @db.ObjectId
+  projectId                        String   @db.ObjectId
+  projectCode                      String?
+  tenderProposalSubmissionDate     DateTime?
+  tenderValidityPeriodDays         Int?
+  teamLeader                       String?
+  financialMatters                 String?
+  technicalMatters                 String?
+  contractMatters                  String?
+  procurementMatters               String?
+  costingAndEstimationMatters      String?
+  implementationStage              String?
+  backgroundReview                 String?
+  scopeOfWorks                     String?
+  keyTerms                         String?
+  financialPoints                  Json?
+  technical                        String?
+  procurementStrategyWorkPackages  String?
+  sourcingReference                String?
+  costBreakdown                    String?
+  riskReviewMitigationItems        Json?
+  contractStructureUrl             String?
+  contractStructurePublicId        String?
+  contractStructureFileName        String?
+  contractStructureMimeType        String?
+  contractStructureSizeBytes       Int?
+  revenueVsCostUrl                 String?
+  revenueVsCostPublicId            String?
+  revenueVsCostFileName            String?
+  revenueVsCostMimeType            String?
+  revenueVsCostSizeBytes           Int?
+  cashflowUrl                      String?
+  cashflowPublicId                 String?
+  cashflowFileName                 String?
+  cashflowMimeType                 String?
+  cashflowSizeBytes                Int?
+  documentUrl                      String?
+  documentPublicId                 String?
+  documentFileName                 String?
+  documentMimeType                 String?
+  documentSizeBytes                Int?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model CaaRequest {
+  id                                           String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId                                    String   @unique @db.ObjectId
+  projectId                                    String   @db.ObjectId
+  projectCode                                  String?
+  tenderProposalPrice                          Float?
+  finalContractAmount                          Float?
+  estimatedBudgetCost                          Float?
+  estimatedMarginPercent                       Float?
+  tenderProposalRefNo                          String?
+  loaDate                                      DateTime?
+  contractCommencementDate                     DateTime?
+  contractCompletionDate                       DateTime?
+  contractPeriodDays                           Int?
+  performanceBondForProject                    String?
+  stampDutyInclusiveLegalFees                  Float?
+  insurance                                    String?
+  bumiputeraParticipation                      String?
+  formationOfJvCompany                         String?
+  criticalActivityMilestone                    String?
+  defectLiabilityPeriodDlp                     String?
+  liquidatedDamagesRate                        Float?
+  paymentTerm                                  String?
+  typeOfContract                               String?
+  formOfContractCondition                      String?
+  projectDirector                              String?
+  contactPersonAtSite                          String?
+  claimApplicationProcess                      Json?
+  claimCertificationProcess                    Json?
+  variationOrderApplicationProcess             Json?
+  extensionOfTimeApplicationProcess            Json?
+  commissioningCompletionManagementSystems     Json?
+  keyDeliveryMilestone                         Json?
+  mandatoryTestingRequiredToCommission         Json?
+  documentRequiredForContractualAcceptance     Json?
+  preRequisiteDocumentsForDlp                  Json?
+  organisationAndManpowerChartUrl              String?
+  organisationAndManpowerChartPublicId         String?
+  organisationAndManpowerChartFileName         String?
+  organisationAndManpowerChartMimeType         String?
+  organisationAndManpowerChartSizeBytes        Int?
+  documentUrl                                  String?
+  documentPublicId                             String?
+  documentFileName                             String?
+  documentMimeType                             String?
+  documentSizeBytes                            Int?
+  createdAt                                    DateTime @default(now())
+  updatedAt                                    DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model PccaRequest {
+  id                        String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId                 String   @unique @db.ObjectId
+  projectId                 String   @db.ObjectId
+  projectCode               String?
+  priceRevenueFromContractBq Json?
+  costFromContractBq        Json?
+  totalRevenueRm            Float?
+  totalCostRm               Float?
+  constructionCostRm        Float?
+  internalCost              Float?
+  remarks                   String?
+  documentUrl               String?
+  documentPublicId          String?
+  documentFileName          String?
+  documentMimeType          String?
+  documentSizeBytes         Int?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model PpRequest {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId         String   @unique @db.ObjectId
+  projectId         String   @db.ObjectId
+  projectCode       String?
+  documentUrl       String?
+  documentPublicId  String?
+  documentFileName  String?
+  documentMimeType  String?
+  documentSizeBytes Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model VapRequest {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId         String   @unique @db.ObjectId
+  projectId         String   @db.ObjectId
+  projectCode       String?
+  documentUrl       String?
+  documentPublicId  String?
+  documentFileName  String?
+  documentMimeType  String?
+  documentSizeBytes Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  request Request @relation(fields: [requestId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model OtherRequest {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  requestId           String   @unique @db.ObjectId
+  projectId           String   @db.ObjectId
+  projectCode         String?
+  descriptionOfMatters String?
+  documentUrl         String?
+  documentPublicId    String?
+  documentFileName    String?
+  documentMimeType    String?
+  documentSizeBytes   Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   request Request @relation(fields: [requestId], references: [id])
   project Project @relation(fields: [projectId], references: [id])
