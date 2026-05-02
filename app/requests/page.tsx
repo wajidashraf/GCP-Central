@@ -49,6 +49,24 @@ const STATUS_DISPLAY_MAP: Record<string, string> = {
   R: 'Ready for Review',
 };
 
+const ACTION_LABEL_MAP: Record<string, string> = {
+  NEW: 'Verify',
+  'READY FOR REVIEW': 'Review',
+  R: 'Review',
+  RESUBMIT: 'ReSubmit',
+  RS: 'ReSubmit',
+  'FOR RECORD': 'View',
+  FR: 'View',
+  'PENDING ENDORSE': 'Endorse',
+  'PENDING ACK': 'Acknowledge',
+  E: 'View',
+};
+
+function getActionLabel(status: string) {
+  const normalizedStatus = status.trim().toUpperCase();
+  return ACTION_LABEL_MAP[normalizedStatus] ?? 'Open';
+}
+
 function formatRequestDate(submittedAt: Date | null, createdAt: Date) {
   const timestamp = submittedAt ?? createdAt;
   return new Intl.DateTimeFormat('en-GB', {
@@ -152,6 +170,12 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     pbl: { project: { projectName: string } } | null;
     jvp: { project: { projectName: string } } | null;
     rpp: { project: { projectName: string } } | null;
+    stsp: { project: { projectName: string } } | null;
+    caa: { project: { projectName: string } } | null;
+    pcca: { project: { projectName: string } } | null;
+    pp: { project: { projectName: string } } | null;
+    vap: { project: { projectName: string } } | null;
+    other: { project: { projectName: string } } | null;
   }> = [];
 
   const HIDDEN_STATUSES = ['Draft', 'Draft-Details'] as const;
@@ -221,12 +245,65 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
             },
           },
         },
+        stsp: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        caa: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        pcca: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        pp: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        vap: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
+        other: {
+          select: {
+            project: {
+              select: {
+                projectName: true,
+              },
+            },
+          },
+        },
       },
     });
   } catch {
     loadError = true;
   }
-  console.log(requests)
 
   const filterOptions: RequestFilterOption[] = await prisma.request.findMany({
     where: visibilityWhere,
@@ -332,6 +409,12 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                   request.pbl?.project?.projectName ??
                   request.jvp?.project?.projectName ??
                   request.rpp?.project?.projectName ??
+                  request.stsp?.project?.projectName ??
+                  request.caa?.project?.projectName ??
+                  request.pcca?.project?.projectName ??
+                  request.pp?.project?.projectName ??
+                  request.vap?.project?.projectName ??
+                  request.other?.project?.projectName ??
                   '—';
                 const typeWithChannel = `${request.requestType} - ${request.routingType}`;
 
@@ -348,9 +431,9 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
                       </span>
                     </td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <Button href={`/requests/${request.id}`} variant="primary" size="sm">
-                          Open
+                      <div className="grid w-full items-center gap-2">
+                        <Button href={`/requests/${request.id}`} variant="primary" size="sm" className="w-full flex-wrap">
+                          {getActionLabel(request.status)}
                         </Button>
                         {canSeeBookEngagement && (
                           <Button

@@ -9,6 +9,7 @@ interface Slot {
   startTime: Date;
   endTime: Date;
   attendees: string[];
+  status?: 'available' | 'booked' | null;
   createdAt: Date;
 }
 
@@ -51,6 +52,7 @@ export default function EngagementSlotsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'available' | 'booked'>('available');
   const [durationPreset, setDurationPreset] = useState<DurationOptionValue>('30');
   const [customDurationMinutes, setCustomDurationMinutes] = useState('30');
   const [formData, setFormData] = useState({
@@ -200,58 +202,159 @@ export default function EngagementSlotsPage() {
     }));
   };
 
+  const reviewerNameById = new Map(reviewers.map((reviewer) => [reviewer.id, reviewer.name]));
+  const availableSlots = slots.filter((slot) => !slot.status || slot.status === 'available');
+  const bookedSlots = slots.filter((slot) => slot.status === 'booked');
+  const visibleSlots = activeTab === 'available' ? availableSlots : bookedSlots;
+
+  const formatDate = (value: Date) =>
+    new Date(value).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+  const formatTime = (value: Date) =>
+    new Date(value).toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  const getDuration = (startValue: Date, endValue: Date) => {
+    const start = new Date(startValue).getTime();
+    const end = new Date(endValue).getTime();
+    return Math.max(Math.round((end - start) / 60000), 0);
+  };
+
   return (
     <div className="space-y-6">
-      <Button href={`/admin`} variant="secondary" size="sm">
-            Back
-          </Button>
       <header className="page-header sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="page-title">Engagement Slots</h1>
-          <p className="page-subtitle">Create and manage engagement slots for request reviews</p>
+          <p className="page-subtitle">
+            Create slots and quickly monitor booked vs available schedules.
+          </p>
         </div>
-        <Button
-          onClick={() => {
-            setErrorMessage(null);
-            setIsModalOpen(true);
-          }}
-          variant="primary"
-          size="sm"
-        >
-          + Create Slot
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button href="/admin" variant="secondary" size="sm">
+            Back to admin
+          </Button>
+          <Button
+            onClick={() => {
+              setErrorMessage(null);
+              setIsModalOpen(true);
+            }}
+            variant="primary"
+            size="sm"
+          >
+            + Create Slot
+          </Button>
+        </div>
       </header>
 
-      <section className="surface-card p-5">
+      <section className="surface-card space-y-4 p-5">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Total slots
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--text)]">{slots.length}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Available
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--success)]">{availableSlots.length}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Booked
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--text)]">{bookedSlots.length}</p>
+          </div>
+        </div>
+
+        <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('available')}
+            className={`btn btn--sm ${activeTab === 'available' ? 'btn--primary' : 'btn--ghost'}`}
+          >
+            Available ({availableSlots.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('booked')}
+            className={`btn btn--sm ${activeTab === 'booked' ? 'btn--primary' : 'btn--ghost'}`}
+          >
+            Booked ({bookedSlots.length})
+          </button>
+        </div>
+
         {isLoading ? (
           <p className="text-center text-[var(--text-muted)]">Loading slots...</p>
-        ) : slots.length > 0 ? (
-          <div className="table-shell">
-            <table>
-              <thead>
-                <tr>
-                  <th>Slot Name</th>
-                  <th>Start Time</th>
-                  <th>End Time</th>
-                  <th>Attendees</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {slots.map(slot => (
-                  <tr key={slot.id}>
-                    <td>{slot.slotName}</td>
-                    <td>{new Date(slot.startTime).toLocaleString()}</td>
-                    <td>{new Date(slot.endTime).toLocaleString()}</td>
-                    <td>{slot.attendees.length} reviewers</td>
-                    <td>{new Date(slot.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        ) : visibleSlots.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleSlots.map((slot) => {
+              const attendeeNames = slot.attendees
+                .map((attendeeId) => reviewerNameById.get(attendeeId) ?? attendeeId)
+                .slice(0, 3);
+              const remainingAttendees = Math.max(slot.attendees.length - attendeeNames.length, 0);
+
+              return (
+                <article key={slot.id} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-[var(--text)]">{slot.slotName}</p>
+                    <span
+                      className={`badge ${(!slot.status || slot.status === 'available') ? 'badge--success' : 'badge--warning'}`}
+                    >
+                      {!slot.status || slot.status === 'available' ? 'Available' : 'Booked'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-1 text-xs text-[var(--text-subtle)]">
+                    <p>
+                      <span className="font-semibold text-[var(--text)]">Date:</span> {formatDate(slot.startTime)}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[var(--text)]">Time:</span>{' '}
+                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[var(--text)]">Duration:</span>{' '}
+                      {getDuration(slot.startTime, slot.endTime)} mins
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[var(--text)]">Created:</span>{' '}
+                      {new Date(slot.createdAt).toLocaleDateString('en-GB')}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 border-t border-[var(--border)] pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+                      Attendees ({slot.attendees.length})
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      {attendeeNames.join(', ') || 'No attendees'}
+                      {remainingAttendees > 0 ? ` +${remainingAttendees} more` : ''}
+                    </p>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
-          <p className="text-center text-[var(--text-muted)]">No slots created yet</p>
+          <div className="rounded-lg border border-dashed border-[var(--border)] p-8 text-center">
+            <p className="text-sm font-semibold text-[var(--text)]">
+              {activeTab === 'available' ? 'No available slots' : 'No booked slots'}
+            </p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              {activeTab === 'available'
+                ? 'Create a new slot to make it available for booking.'
+                : 'Booked slots will appear here once requests are scheduled.'}
+            </p>
+          </div>
         )}
       </section>
 

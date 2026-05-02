@@ -131,49 +131,72 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
         return searchable.includes(query);
       })
     : users;
+  const totalUsers = users.length;
+  const activeUsers = users.filter((user: typeof users[number]) => user.isActive).length;
+  const inactiveUsers = totalUsers - activeUsers;
 
   return (
-    <div className="space-y-6">
-      <Button href={`/admin`} variant="secondary" size="sm">
-            Back
+    <div className="space-y-5">
+      <header className="surface-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="page-title">User & Role Management</h1>
+            <p className="page-subtitle">
+              Manage account access, role assignments, and activation status from one place.
+            </p>
+          </div>
+          <Button href="/admin" variant="secondary" size="sm">
+            Back to admin
           </Button>
-      <header className="page-header">
-        <h1 className="page-title">User & Role Management</h1>
-        <p className="page-subtitle">
-          View accounts, update role assignments, and activate/deactivate users directly from the
-          admin panel.
-        </p>
+        </div>
       </header>
 
-      <div className="surface-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="badge badge--brand">Users: {users.length}</span>
-            <span className="badge badge--success">
-              Active: {users.filter((user: typeof users[number]) => user.isActive).length}
-            </span>
-            <span className="badge badge--neutral">
-              Inactive: {users.filter((user: typeof users[number]) => !user.isActive).length}
-            </span>
+      <div className="surface-card space-y-4 p-4 sm:p-5">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Total users
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--text)]">{totalUsers}</p>
           </div>
-          <form method="get" className="flex w-full items-center gap-2 sm:w-auto">
-            <input
-              type="text"
-              name="q"
-              defaultValue={q ?? ''}
-              placeholder="Search by name, email, username, company..."
-              className="input h-9 min-w-[280px] py-0 text-sm"
-            />
-            <button type="submit" className="btn btn--secondary btn--sm">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Active
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--success)]">{activeUsers}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+              Inactive
+            </p>
+            <p className="mt-1 text-xl font-semibold text-[var(--text)]">{inactiveUsers}</p>
+          </div>
+        </div>
+
+        <form method="get" className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q ?? ''}
+            placeholder="Search by name, email, username, or company"
+            className="input h-10 w-full py-0 text-sm"
+          />
+          <div className="flex items-center gap-2">
+            <button type="submit" className="btn btn--secondary btn--sm w-full sm:w-auto">
               Search
             </button>
             {query ? (
-              <Link href="/admin/roles" className="btn btn--ghost btn--sm">
+              <Link href="/admin/roles" className="btn btn--ghost btn--sm w-full sm:w-auto">
                 Clear
               </Link>
             ) : null}
-          </form>
-        </div>
+          </div>
+        </form>
+        {query ? (
+          <p className="text-xs text-[var(--text-subtle)]">
+            Showing {filteredUsers.length} of {totalUsers} users for "{q}".
+          </p>
+        ) : null}
       </div>
 
       <div className="table-shell">
@@ -225,64 +248,72 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
                       </div>
                     </td>
                     <td>
-                      <div className="space-y-3">
-                        <form action={updateUserRoleAssignmentsAction} className="space-y-2">
-                          <input type="hidden" name="userId" value={user.id} />
+                      <details className="group rounded-md border border-[var(--border)] bg-[var(--bg-subtle)]">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold text-[var(--text)]">
+                          Manage user
+                          <span className="text-xs text-[var(--text-subtle)] transition-transform group-open:rotate-180">
+                            ▼
+                          </span>
+                        </summary>
+                        <div className="space-y-3 border-t border-[var(--border)] p-3">
+                          <form action={updateUserRoleAssignmentsAction} className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+                            <input type="hidden" name="userId" value={user.id} />
 
-                          <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
-                            Primary Role
-                            <select
-                              name="primaryRole"
-                              defaultValue={primaryRole}
-                              className="input mt-1 h-9 py-0 text-sm"
-                            >
-                              {roleOptions.map((roleOption: typeof roleOptions[number]) => (
-                                <option key={roleOption.slug} value={roleOption.slug}>
-                                  {roleOption.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                            {roleOptions.map((roleOption: typeof roleOptions[number]) => (
-                              <label
-                                key={roleOption.slug}
-                                className="flex items-center gap-2 text-xs text-[var(--text-muted)]"
+                            <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+                              Primary Role
+                              <select
+                                name="primaryRole"
+                                defaultValue={primaryRole}
+                                className="input mt-1 h-9 py-0 text-sm"
                               >
-                                <input
-                                  type="checkbox"
-                                  name="roles"
-                                  value={roleOption.slug}
-                                  defaultChecked={assignedRoles.includes(roleOption.slug)}
-                                />
-                                <span>{roleOption.label}</span>
-                              </label>
-                            ))}
-                          </div>
+                                {roleOptions.map((roleOption: typeof roleOptions[number]) => (
+                                  <option key={roleOption.slug} value={roleOption.slug}>
+                                    {roleOption.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
 
-                          <div>
-                            <PendingSubmitButton
-                              idleLabel="Save Roles"
-                              pendingLabel="Saving..."
-                              className="btn btn--secondary btn--sm"
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                              {roleOptions.map((roleOption: typeof roleOptions[number]) => (
+                                <label
+                                  key={roleOption.slug}
+                                  className="flex items-center gap-2 text-xs text-[var(--text-muted)]"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    name="roles"
+                                    value={roleOption.slug}
+                                    defaultChecked={assignedRoles.includes(roleOption.slug)}
+                                  />
+                                  <span>{roleOption.label}</span>
+                                </label>
+                              ))}
+                            </div>
+
+                            <div>
+                              <PendingSubmitButton
+                                idleLabel="Save Roles"
+                                pendingLabel="Saving..."
+                                className="btn btn--secondary btn--sm w-full"
+                              />
+                            </div>
+                          </form>
+                          <form action={toggleUserActiveStatusAction} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+                            <input type="hidden" name="userId" value={user.id} />
+                            <input
+                              type="hidden"
+                              name="nextActive"
+                              value={user.isActive ? 'false' : 'true'}
                             />
-                          </div>
-                        </form>
-                        <form action={toggleUserActiveStatusAction}>
-                          <input type="hidden" name="userId" value={user.id} />
-                          <input
-                            type="hidden"
-                            name="nextActive"
-                            value={user.isActive ? 'false' : 'true'}
-                          />
-                          <PendingSubmitButton
-                            idleLabel={user.isActive ? 'Deactivate' : 'Activate'}
-                            pendingLabel={user.isActive ? 'Deactivating...' : 'Activating...'}
-                            className={`btn btn--sm ${user.isActive ? 'btn--danger' : 'btn--accent'}`}
-                          />
-                        </form>
-                      </div>
+                            <PendingSubmitButton
+                              idleLabel={user.isActive ? 'Deactivate' : 'Activate'}
+                              pendingLabel={user.isActive ? 'Deactivating...' : 'Activating...'}
+                              className={`btn btn--sm w-full ${user.isActive ? 'btn--danger' : 'btn--accent'}`}
+                            />
+                          </form>
+                        </div>
+                      </details>
                     </td>
                   </tr>
                 );

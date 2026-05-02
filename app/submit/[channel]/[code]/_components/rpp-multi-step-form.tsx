@@ -565,9 +565,19 @@ export default function RppMultiStepForm({
             {uploadedDocument ? (
               <UploadedDocumentPreview
                 documentUrl={uploadedDocument.documentUrl}
+                documentPublicId={uploadedDocument.documentPublicId}
                 documentFileName={uploadedDocument.documentFileName}
                 documentMimeType={uploadedDocument.documentMimeType}
                 documentSizeBytes={uploadedDocument.documentSizeBytes}
+                requestId={requestId}
+                requestType={RPP_FORM_CODE}
+                onRemoved={() => {
+                  setUploadedDocument(null);
+                  setAlertState({
+                    type: "info",
+                    message: "Uploaded document removed.",
+                  });
+                }}
               />
             ) : null}
 

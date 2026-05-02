@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
+import SquareCloseIcon from "@/src/components/ui/square-close-icon";
 import { InputField, SelectField, type SelectFieldOption } from "@/src/components/forms/fields";
 import MultiStepStepper from "@/src/components/forms/multi-step-stepper";
 import { clearPersistedFormState, readPersistedFormState, writePersistedFormState } from "@/src/components/forms/session-storage";
@@ -62,7 +63,7 @@ function SimpleTable({
             <input className="input" placeholder="No. of days" value={row.no_of_days} onChange={(e) => setRows(rows.map((r, idx) => idx === i ? { ...r, no_of_days: e.target.value } : r))} />
             <input className="input" placeholder="Clause reference" value={row.clause_reference} onChange={(e) => setRows(rows.map((r, idx) => idx === i ? { ...r, clause_reference: e.target.value } : r))} />
             <input className="input" placeholder="Description" value={row.description} onChange={(e) => setRows(rows.map((r, idx) => idx === i ? { ...r, description: e.target.value } : r))} />
-            <Button type="button" variant="ghost" className="text-[var(--danger-text)]" onClick={() => setRows(rows.filter((_, idx) => idx !== i).length ? rows.filter((_, idx) => idx !== i) : [{ ...defaultRow }])}>Remove</Button>
+            <Button type="button" variant="ghost" className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]" onClick={() => setRows(rows.filter((_, idx) => idx !== i).length ? rows.filter((_, idx) => idx !== i) : [{ ...defaultRow }])}><SquareCloseIcon className="h-10 w-10" /></Button>
           </div>
         ))}
       </div>
@@ -326,7 +327,7 @@ export default function CaaMultiStepForm({ channel, requestTitle, requestor, pro
         ["Formation of JV Company", "formationOfJvCompany"],
         ["Critical Activities & Milestones", "criticalActivityMilestone"],
         ["Defect Liability Period (DLP)", "defectLiabilityPeriodDlp"],
-      ].map(([label, key]) => <InputField key={key} label={label} value={contractFields[key]} onChange={(e) => setContractFields((s) => ({ ...s, [key]: e.target.value }))} />)}</div><div className="rounded-xl border border-[var(--border)] p-4"><p className="mb-2 text-sm font-semibold text-[var(--text)]">Project Organisation and Manpower Chart</p><input type="file" accept={acceptedDocumentTypes} onChange={(e) => handleUpload(e, setOrganisationChart)} className="input py-2" />{organisationChart ? <UploadedDocumentPreview documentUrl={organisationChart.documentUrl} documentFileName={organisationChart.documentFileName} documentMimeType={organisationChart.documentMimeType} documentSizeBytes={organisationChart.documentSizeBytes} /> : null}</div><div className="flex flex-wrap justify-between gap-3 pt-2"><Button type="button" variant="secondary" onClick={() => setCurrentStep(3)}>Previous</Button><Button type="button" onClick={() => setCurrentStep(5)}>Next Step</Button></div></section> : null}
+      ].map(([label, key]) => <InputField key={key} label={label} value={contractFields[key]} onChange={(e) => setContractFields((s) => ({ ...s, [key]: e.target.value }))} />)}</div><div className="upload-section"><p className="mb-2 text-sm font-semibold text-[var(--text)]">Project Organisation and Manpower Chart</p><input type="file" accept={acceptedDocumentTypes} onChange={(e) => handleUpload(e, setOrganisationChart)} className="input py-2" />{organisationChart ? <UploadedDocumentPreview documentUrl={organisationChart.documentUrl} documentPublicId={organisationChart.documentPublicId} documentFileName={organisationChart.documentFileName} documentMimeType={organisationChart.documentMimeType} documentSizeBytes={organisationChart.documentSizeBytes} requestId={requestId} requestType={CAA_FORM_CODE} onRemoved={() => { setOrganisationChart(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}</div><div className="flex flex-wrap justify-between gap-3 pt-2"><Button type="button" variant="secondary" onClick={() => setCurrentStep(3)}>Previous</Button><Button type="button" onClick={() => setCurrentStep(5)}>Next Step</Button></div></section> : null}
 
       {currentStep === 5 ? <section className="space-y-4"><div className="grid gap-4 md:grid-cols-2">{[
         ["Liquidated Damages (LAD/day) Rate", "liquidatedDamagesRate"],
@@ -343,11 +344,11 @@ export default function CaaMultiStepForm({ channel, requestTitle, requestor, pro
 
       {currentStep === 9 ? (
         <section className="space-y-4">
-          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+          <div className="upload-section">
             <p className="text-sm font-semibold text-[var(--text)]">Final Document Upload</p>
             <input type="file" accept={acceptedDocumentTypes} onChange={(e) => handleUpload(e, setUploadedDocument)} className="input py-2" />
             <p className="text-xs text-[var(--text-subtle)]">Allowed: PDF, Word, Excel, JPG, PNG. Max size: {MAX_FILE_SIZE_MB}MB.</p>
-            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} /> : null}
+            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentPublicId={uploadedDocument.documentPublicId} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} requestId={requestId} requestType={CAA_FORM_CODE} onRemoved={() => { setUploadedDocument(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
           </div>
           <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
             <input type="checkbox" className="mt-1" checked={acknowledgement} onChange={(e) => setAcknowledgement(e.target.checked)} />

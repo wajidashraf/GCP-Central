@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
+import SquareCloseIcon from "@/src/components/ui/square-close-icon";
 import { InputField, SelectField, TextareaField, type SelectFieldOption } from "@/src/components/forms/fields";
 import MultiStepStepper from "@/src/components/forms/multi-step-stepper";
 import {
@@ -609,7 +610,7 @@ export default function StspMultiStepForm({
                   <span className="w-6 text-xs font-semibold text-[var(--text-subtle)]">{index + 1}.</span>
                   <input value={point} onChange={(event) => updatePointListValue(setFinancialPoints, "financialPoints", index, event.target.value)} className="input flex-1" />
                   {financialPoints.length > 1 ? (
-                    <Button type="button" size="sm" variant="ghost" className="text-[var(--danger-text)]" onClick={() => removePointFromList(setFinancialPoints, "financialPoints", index)}>✕</Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]" onClick={() => removePointFromList(setFinancialPoints, "financialPoints", index)}><SquareCloseIcon className="h-10 w-10" /></Button>
                   ) : null}
                 </div>
               ))}
@@ -618,20 +619,20 @@ export default function StspMultiStepForm({
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-[var(--border)] p-4">
+            <div className="upload-section">
               <p className="mb-2 text-sm font-semibold">Contract Structure Image</p>
               <input type="file" accept={acceptedDocumentTypes} onChange={(event) => handleUpload(event, setContractStructureFile, "Contract structure uploaded")} className="input py-2" />
-              {contractStructureFile ? <UploadedDocumentPreview documentUrl={contractStructureFile.documentUrl} documentFileName={contractStructureFile.documentFileName} documentMimeType={contractStructureFile.documentMimeType} documentSizeBytes={contractStructureFile.documentSizeBytes} /> : null}
+              {contractStructureFile ? <UploadedDocumentPreview documentUrl={contractStructureFile.documentUrl} documentPublicId={contractStructureFile.documentPublicId} documentFileName={contractStructureFile.documentFileName} documentMimeType={contractStructureFile.documentMimeType} documentSizeBytes={contractStructureFile.documentSizeBytes} requestId={requestId} requestType={STSP_FORM_CODE} onRemoved={() => { setContractStructureFile(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
             </div>
-            <div className="rounded-xl border border-[var(--border)] p-4">
+            <div className="upload-section">
               <p className="mb-2 text-sm font-semibold">Revenue vs Cost</p>
               <input type="file" accept={acceptedDocumentTypes} onChange={(event) => handleUpload(event, setRevenueVsCostFile, "Revenue vs cost uploaded")} className="input py-2" />
-              {revenueVsCostFile ? <UploadedDocumentPreview documentUrl={revenueVsCostFile.documentUrl} documentFileName={revenueVsCostFile.documentFileName} documentMimeType={revenueVsCostFile.documentMimeType} documentSizeBytes={revenueVsCostFile.documentSizeBytes} /> : null}
+              {revenueVsCostFile ? <UploadedDocumentPreview documentUrl={revenueVsCostFile.documentUrl} documentPublicId={revenueVsCostFile.documentPublicId} documentFileName={revenueVsCostFile.documentFileName} documentMimeType={revenueVsCostFile.documentMimeType} documentSizeBytes={revenueVsCostFile.documentSizeBytes} requestId={requestId} requestType={STSP_FORM_CODE} onRemoved={() => { setRevenueVsCostFile(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
             </div>
-            <div className="rounded-xl border border-[var(--border)] p-4">
+            <div className="upload-section">
               <p className="mb-2 text-sm font-semibold">Cashflow</p>
               <input type="file" accept={acceptedDocumentTypes} onChange={(event) => handleUpload(event, setCashflowFile, "Cashflow uploaded")} className="input py-2" />
-              {cashflowFile ? <UploadedDocumentPreview documentUrl={cashflowFile.documentUrl} documentFileName={cashflowFile.documentFileName} documentMimeType={cashflowFile.documentMimeType} documentSizeBytes={cashflowFile.documentSizeBytes} /> : null}
+              {cashflowFile ? <UploadedDocumentPreview documentUrl={cashflowFile.documentUrl} documentPublicId={cashflowFile.documentPublicId} documentFileName={cashflowFile.documentFileName} documentMimeType={cashflowFile.documentMimeType} documentSizeBytes={cashflowFile.documentSizeBytes} requestId={requestId} requestType={STSP_FORM_CODE} onRemoved={() => { setCashflowFile(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
             </div>
           </div>
 
@@ -657,7 +658,7 @@ export default function StspMultiStepForm({
               <div key={`risk-row-${index}`} className="mb-2 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
                 <input className="input" placeholder="Enter identified risk" value={item.riskIdentified} onChange={(event) => setRiskReviewMitigationItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, riskIdentified: event.target.value } : row))} />
                 <input className="input" placeholder="Enter mitigation plan" value={item.mitigationPlan} onChange={(event) => setRiskReviewMitigationItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, mitigationPlan: event.target.value } : row))} />
-                <Button type="button" variant="ghost" className="text-[var(--danger-text)]" onClick={() => setRiskReviewMitigationItems((current) => current.filter((_, rowIndex) => rowIndex !== index).length > 0 ? current.filter((_, rowIndex) => rowIndex !== index) : [{ ...defaultRiskRow }])}>Remove</Button>
+                <Button type="button" variant="ghost" className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]" onClick={() => setRiskReviewMitigationItems((current) => current.filter((_, rowIndex) => rowIndex !== index).length > 0 ? current.filter((_, rowIndex) => rowIndex !== index) : [{ ...defaultRiskRow }])}><SquareCloseIcon className="h-10 w-10" /></Button>
               </div>
             ))}
             {getFieldError("riskReviewMitigationItems") ? <p className="mt-2 text-xs text-[var(--danger-text)]">{getFieldError("riskReviewMitigationItems")}</p> : null}
@@ -671,10 +672,10 @@ export default function StspMultiStepForm({
 
       {currentStep === 6 ? (
         <section className="space-y-4">
-          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+          <div className="upload-section">
             <p className="text-sm font-semibold text-[var(--text)]">Final Document Upload</p>
             <input type="file" accept={acceptedDocumentTypes} onChange={(event) => handleUpload(event, setUploadedDocument, "Document uploaded")} className="input py-2" />
-            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} /> : null}
+            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentPublicId={uploadedDocument.documentPublicId} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} requestId={requestId} requestType={STSP_FORM_CODE} onRemoved={() => { setUploadedDocument(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
           </div>
           <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
             <input type="checkbox" className="mt-1" checked={acknowledgement} onChange={(event) => setAcknowledgement(event.target.checked)} />

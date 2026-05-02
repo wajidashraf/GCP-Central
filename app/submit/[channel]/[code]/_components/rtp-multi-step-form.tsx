@@ -596,9 +596,19 @@ export default function RtpMultiStepForm({
             {uploadedDocument ? (
               <UploadedDocumentPreview
                 documentUrl={uploadedDocument.documentUrl}
+                documentPublicId={uploadedDocument.documentPublicId}
                 documentFileName={uploadedDocument.documentFileName}
                 documentMimeType={uploadedDocument.documentMimeType}
                 documentSizeBytes={uploadedDocument.documentSizeBytes}
+                requestId={requestId}
+                requestType={RTP_FORM_CODE}
+                onRemoved={() => {
+                  setUploadedDocument(null);
+                  setAlertState({
+                    type: "info",
+                    message: "Uploaded document removed.",
+                  });
+                }}
               />
             ) : null}
 

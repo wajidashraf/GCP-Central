@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
+import SquareCloseIcon from "@/src/components/ui/square-close-icon";
 import { InputField, SelectField, type SelectFieldOption } from "@/src/components/forms/fields";
 import MultiStepStepper from "@/src/components/forms/multi-step-stepper";
 import { clearPersistedFormState, readPersistedFormState, writePersistedFormState } from "@/src/components/forms/session-storage";
@@ -333,10 +334,10 @@ export default function RpccaMultiStepForm({ channel, requestor, projects, canSu
                       <Button
                         type="button"
                         variant="ghost"
-                        className="text-[var(--danger-text)]"
+                        className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
                         onClick={() => setWorkItemRows(workItemRows.filter((_, i) => i !== index).length ? workItemRows.filter((_, i) => i !== index) : [{ workDescription: "", revenue: "", cost: "", voDescription: "", voRevenue: "", voCost: "" }])}
                       >
-                        Remove
+                        <SquareCloseIcon className="h-10 w-10" />
                       </Button>
                     </td>
                   </tr>
@@ -360,11 +361,11 @@ export default function RpccaMultiStepForm({ channel, requestor, projects, canSu
 
       {currentStep === 4 ? (
         <section className="space-y-4">
-          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+          <div className="upload-section">
             <p className="text-sm font-semibold text-[var(--text)]">Supporting Documents</p>
             <input type="file" accept={acceptedDocumentTypes} onChange={handleFileUpload} className="input py-2" />
             <p className="text-xs text-[var(--text-subtle)]">Allowed: PDF, Word, Excel, JPG, PNG. Max size: {MAX_FILE_SIZE_MB}MB.</p>
-            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} /> : null}
+            {uploadedDocument ? <UploadedDocumentPreview documentUrl={uploadedDocument.documentUrl} documentPublicId={uploadedDocument.documentPublicId} documentFileName={uploadedDocument.documentFileName} documentMimeType={uploadedDocument.documentMimeType} documentSizeBytes={uploadedDocument.documentSizeBytes} requestId={requestId} requestType={REVISED_PCCA_FORM_CODE} onRemoved={() => { setUploadedDocument(null); setAlertState({ type: "info", message: "Uploaded document removed." }); }} /> : null}
           </div>
           <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
             <input type="checkbox" className="mt-1" checked={acknowledgement} onChange={(e) => setAcknowledgement(e.target.checked)} />

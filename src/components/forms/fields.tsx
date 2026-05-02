@@ -4,6 +4,8 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { useId } from "react";
+import { Upload } from "lucide-react";
 
 function mergeClassNames(...classNames: Array<string | undefined | false>) {
   return classNames.filter(Boolean).join(" ");
@@ -31,6 +33,43 @@ export function InputField({
   inputClassName,
   ...inputProps
 }: InputFieldProps) {
+  const inputId = useId();
+  const isFileInput = inputProps.type === "file";
+
+  if (isFileInput) {
+    return (
+      <div
+        className={mergeClassNames(
+          "space-y-1 flex flex-col items-start justify-start",
+          containerClassName
+        )}
+      >
+        <span className="text-sm font-medium text-[var(--text)]">
+          {label}
+          {required ? <span className="ml-1 text-[var(--danger-text)]">*</span> : null}
+        </span>
+        <input
+          {...inputProps}
+          id={inputId}
+          className="sr-only"
+        />
+        <label
+          htmlFor={inputId}
+          className={mergeClassNames(
+            "group inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-gradient-to-br from-white to-[var(--surface-soft)] px-4 py-3 text-sm font-semibold text-[var(--text)] shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-500)] hover:text-[var(--brand-700)] hover:shadow-[0_12px_24px_rgba(37,99,235,0.18)]",
+            inputProps.disabled ? "cursor-not-allowed opacity-60 hover:translate-y-0" : undefined,
+            inputClassName
+          )}
+        >
+          <Upload className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5" aria-hidden="true" />
+          Upload document
+        </label>
+        {hint ? <p className="my-2 text-xs text-[var(--text-subtle)]">{hint}</p> : null}
+        {error ? <p className="text-xs text-[var(--danger-text)]">{error}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <label className={mergeClassNames("space-y-1", containerClassName)}>
       <span className="text-sm font-medium text-[var(--text)]">

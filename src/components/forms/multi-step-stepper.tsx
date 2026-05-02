@@ -27,7 +27,7 @@ export default function MultiStepStepper({
         stepNumber === currentStep + 2
     );
   return (
-    <div className="border-b border-gray-300 pb-4 mb-12 flex items-center justify-center gap-2 overflow-x-auto pb-1">
+    <div className="border-b border-gray-300 pb-4 mb-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
       {visibleSteps.map(({ step, stepNumber }, index) => {
         const isActive = currentStep === stepNumber;
         const isComplete =

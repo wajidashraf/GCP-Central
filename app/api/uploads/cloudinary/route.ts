@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteFromCloudinary, uploadToCloudinary } from "@/lib/cloudinary";
+import prisma from "@/lib/prisma";
 import {
   RTP_ALLOWED_DOCUMENT_MIME_TYPES,
   RTP_MAX_DOCUMENT_SIZE_BYTES,
@@ -8,6 +9,21 @@ import {
 export const runtime = "nodejs";
 
 const allowedMimeTypes = new Set(RTP_ALLOWED_DOCUMENT_MIME_TYPES);
+
+type RequestType =
+  | "RTP"
+  | "PBL"
+  | "JVP"
+  | "STSP"
+  | "CAA"
+  | "PCCA"
+  | "R-PCCA"
+  | "PP"
+  | "RPP"
+  | "VAP"
+  | "CPR"
+  | "CI"
+  | "OTHERS";
 
 function sanitizeFolder(folder: string) {
   return folder
@@ -75,8 +91,14 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const body = (await req.json()) as { publicId?: string } | null;
+    const body = (await req.json()) as {
+      publicId?: string;
+      requestId?: string;
+      requestType?: string;
+    } | null;
     const publicId = body?.publicId?.trim() ?? "";
+    const requestId = body?.requestId?.trim() ?? "";
+    const requestType = body?.requestType?.trim().toUpperCase() as RequestType | "";
 
     if (!publicId) {
       return NextResponse.json({ message: "publicId is required." }, { status: 400 });
@@ -85,6 +107,42 @@ export async function DELETE(req: Request) {
     const deletedFile = await deleteFromCloudinary(publicId);
     if (!deletedFile.success) {
       return NextResponse.json({ message: "Failed to delete uploaded file." }, { status: 502 });
+    }
+
+    if (requestId && requestType) {
+      const clearData = {
+        documentUrl: null,
+        documentPublicId: null,
+        documentFileName: null,
+        documentMimeType: null,
+        documentSizeBytes: null,
+      };
+
+      if (requestType === "RTP") {
+        await prisma.rtpRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "PBL") {
+        await prisma.pblRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "JVP") {
+        await prisma.jvpRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "STSP") {
+        await prisma.stspRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "CAA") {
+        await prisma.caaRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "PCCA" || requestType === "R-PCCA") {
+        await prisma.pccaRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "PP") {
+        await prisma.ppRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "RPP") {
+        await prisma.rppRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "VAP") {
+        await prisma.vapRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "CPR") {
+        await prisma.cprRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "CI") {
+        await prisma.ciRequest.updateMany({ where: { requestId }, data: clearData });
+      } else if (requestType === "OTHERS") {
+        await prisma.otherRequest.updateMany({ where: { requestId }, data: clearData });
+      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

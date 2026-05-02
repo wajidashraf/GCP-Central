@@ -9,8 +9,6 @@ export const env = {
   CLOUDINARY_CLOUD_NAME: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME || "",
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
-  RESEND_API_KEY: process.env.RESEND_API_KEY || "",
-  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || "",
   AUTH_SECRET: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "",
   // Nodemailer Configuration
   EMAIL_SERVICE: process.env.EMAIL_SERVICE || "gmail", // or 'custom' for custom SMTP

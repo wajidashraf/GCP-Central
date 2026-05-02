@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
+import SquareCloseIcon from "@/src/components/ui/square-close-icon";
 import ConfigDrivenFieldsRenderer, {
   resolveConfigValue,
 } from "@/src/components/forms/config-driven-fields";
@@ -63,6 +64,8 @@ type UploadedDocument = {
 
 type BidderDraftState = {
   companyName: string;
+  customCompanyName: string;
+  sector: string;
   location: string;
   personInCharge: string;
   picContactNumber: string;
@@ -104,12 +107,16 @@ const MAX_FILE_SIZE_MB = RTP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
 const acceptedDocumentTypes = RTP_ALLOWED_DOCUMENT_MIME_TYPES.join(",");
 const emptyBidderDraft: BidderDraftState = {
   companyName: "",
+  customCompanyName: "",
+  sector: "",
   location: "",
   personInCharge: "",
   picContactNumber: "",
   sourcesFrom: "",
   recommendationBy: "",
 };
+const OTHER_COMPANY_OPTION_VALUE = "__other__";
+const EXCLUDED_BIDDER_COMPANY_CODE = "PRO01";
 const bidderFieldConfigs: ReadonlyArray<BidderFieldConfig> = [
   {
     kind: "company-select",
@@ -317,18 +324,50 @@ export default function PblMultiStepForm({
     setFieldErrors(errors ?? {});
   }
 
-  const companyOptions = [
-    {
-      value: '',
-      label: 'Select company name',
-      sector: '',
-    },
-    ...companies.map((c) => ({
-      value: c.id,
-      label: `${c.companyName} (${c.companyCode})`,
-      sector: c.sector,
-    })),
-  ];
+  const companyOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Select company name",
+        companyName: "",
+        sector: "",
+      },
+      ...companies
+        .filter((company) => company.companyCode !== EXCLUDED_BIDDER_COMPANY_CODE)
+        .map((company) => ({
+          value: company.id,
+          label: `${company.companyName} (${company.companyCode})`,
+          companyName: company.companyName,
+          sector: company.sector,
+        })),
+      {
+        value: OTHER_COMPANY_OPTION_VALUE,
+        label: "Other",
+        companyName: "",
+        sector: "",
+      },
+    ],
+    [companies]
+  );
+
+  const sectorOptions = useMemo(
+    () => [
+      { value: "", label: "Select sector" },
+      ...Array.from(
+        new Set(
+          companies
+            .map((company) => company.sector.trim())
+            .filter((sector) => sector.length > 0)
+        )
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .map((sector) => ({
+          value: sector,
+          label: sector,
+        })),
+    ],
+    [companies]
+  );
 
   function resetFeedback() {
     setAlertState(null);
@@ -339,11 +378,11 @@ export default function PblMultiStepForm({
     return fieldErrors[name]?.[0];
   }
 
-  function getBidderFieldError(name: keyof BidderDraftState) {
+  function getBidderFieldError(name: string) {
     return bidderFieldErrors[name]?.[0];
   }
 
-  function clearBidderFieldError(name: keyof BidderDraftState) {
+  function clearBidderFieldError(name: string) {
     if (!bidderFieldErrors[name]) {
       return;
     }
@@ -368,15 +407,58 @@ export default function PblMultiStepForm({
   }
 
   function updateBidderDraft(field: keyof BidderDraftState, value: string) {
-    setBidderDraft((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setBidderDraft((current) => {
+      const next = {
+        ...current,
+        [field]: value,
+      };
+
+      if (field === "companyName") {
+        const selectedCompany = companyOptions.find((company) => company.value === value);
+
+        if (value === OTHER_COMPANY_OPTION_VALUE) {
+          next.sector = "";
+        } else {
+          next.customCompanyName = "";
+          next.sector = selectedCompany?.sector ?? "";
+        }
+      }
+
+      return next;
+    });
     clearBidderFieldError(field);
   }
 
   function handleAddBidder() {
-    const validatedBidder = pblBidderInputSchema.safeParse(bidderDraft);
+    const isOtherCompany = bidderDraft.companyName === OTHER_COMPANY_OPTION_VALUE;
+    const selectedCompany = companyOptions.find((company) => company.value === bidderDraft.companyName);
+    const resolvedCompanyName = isOtherCompany
+      ? bidderDraft.customCompanyName.trim()
+      : (selectedCompany?.companyName ?? "").trim();
+    const resolvedSector = isOtherCompany ? bidderDraft.sector.trim() : (selectedCompany?.sector ?? "").trim();
+    const nextBidderFieldErrors: FieldErrors = {};
+
+    if (isOtherCompany && resolvedCompanyName.length === 0) {
+      nextBidderFieldErrors.customCompanyName = ["Custom company name is required"];
+    }
+
+    if (isOtherCompany && resolvedSector.length === 0) {
+      nextBidderFieldErrors.sector = ["Sector is required for custom company"];
+    }
+
+    if (Object.keys(nextBidderFieldErrors).length > 0) {
+      setBidderFieldErrors(nextBidderFieldErrors);
+      setAlertState({
+        type: "error",
+        message: "Please complete all required bidder fields before adding to the list.",
+      });
+      return;
+    }
+
+    const validatedBidder = pblBidderInputSchema.safeParse({
+      ...bidderDraft,
+      companyName: resolvedCompanyName,
+    });
     if (!validatedBidder.success) {
       setBidderFieldErrors(flattenFieldErrors(validatedBidder.error));
       setAlertState({
@@ -721,7 +803,7 @@ export default function PblMultiStepForm({
 
       {alertState ? (
         <div
-          className={`alert mb-5 ${alertState.type === "error"
+          className={`alert pbl-alert mb-5 ${alertState.type === "error"
             ? "alert--danger"
             : alertState.type === "success"
               ? "alert--success"
@@ -812,31 +894,55 @@ export default function PblMultiStepForm({
               {bidderFieldConfigs.map((fieldConfig) => {
                 if (fieldConfig.kind === "company-select") {
                   return (
-                    <SelectField
-                      key={fieldConfig.key}
-                      label={fieldConfig.label}
-                      required={fieldConfig.required}
-                      value={bidderDraft.companyName}
-                      options={companyOptions.map((company) => ({
-                        value: company.label,
-                        label: company.label,
-                      }))}
-                      onChange={(event) => updateBidderDraft("companyName", event.target.value)}
-                      error={getBidderFieldError("companyName")}
-                    />
+                    <div key={fieldConfig.key} className="space-y-4">
+                      <SelectField
+                        label={fieldConfig.label}
+                        required={fieldConfig.required}
+                        value={bidderDraft.companyName}
+                        options={companyOptions.map((company) => ({
+                          value: company.value,
+                          label: company.label,
+                        }))}
+                        onChange={(event) => updateBidderDraft("companyName", event.target.value)}
+                        error={getBidderFieldError("companyName")}
+                      />
+                      {bidderDraft.companyName === OTHER_COMPANY_OPTION_VALUE ? (
+                        <InputField
+                          label="Custom Company Name"
+                          required
+                          value={bidderDraft.customCompanyName}
+                          onChange={(event) => updateBidderDraft("customCompanyName", event.target.value)}
+                          placeholder="Enter company name"
+                          error={getBidderFieldError("customCompanyName")}
+                        />
+                      ) : null}
+                    </div>
                   );
                 }
 
                 if (fieldConfig.kind === "sector-readonly") {
+                  const isOtherCompany = bidderDraft.companyName === OTHER_COMPANY_OPTION_VALUE;
+
+                  if (isOtherCompany) {
+                    return (
+                      <SelectField
+                        key={fieldConfig.key}
+                        label={fieldConfig.label}
+                        required
+                        value={bidderDraft.sector}
+                        options={sectorOptions}
+                        onChange={(event) => updateBidderDraft("sector", event.target.value)}
+                        error={getBidderFieldError("sector")}
+                      />
+                    );
+                  }
+
                   return (
                     <InputField
                       key={fieldConfig.key}
                       label={fieldConfig.label}
                       required={fieldConfig.required}
-                      value={
-                        companyOptions.find((company) => company.label === bidderDraft.companyName)
-                          ?.sector ?? ""
-                      }
+                      value={bidderDraft.sector}
                       disabled
                     />
                   );
@@ -926,11 +1032,11 @@ export default function PblMultiStepForm({
                             type="button"
                             size="sm"
                             variant="ghost"
-                            className="text-[var(--danger-text)] hover:border-[var(--danger-bg)] hover:bg-[var(--danger-bg)]"
+                            className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
                             onClick={() => handleRemoveBidder(index)}
                             disabled={isBusy}
                           >
-                            Remove
+                            <SquareCloseIcon className="h-10 w-10" />
                           </Button>
                         </td>
                       </tr>
@@ -989,9 +1095,19 @@ export default function PblMultiStepForm({
             {uploadedDocument ? (
               <UploadedDocumentPreview
                 documentUrl={uploadedDocument.documentUrl}
+                documentPublicId={uploadedDocument.documentPublicId}
                 documentFileName={uploadedDocument.documentFileName}
                 documentMimeType={uploadedDocument.documentMimeType}
                 documentSizeBytes={uploadedDocument.documentSizeBytes}
+                requestId={requestId}
+                requestType={PBL_FORM_CODE}
+                onRemoved={() => {
+                  setUploadedDocument(null);
+                  setAlertState({
+                    type: "info",
+                    message: "Uploaded document removed.",
+                  });
+                }}
               />
             ) : null}
 

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/src/components/ui/button";
+import SquareCloseIcon from "@/src/components/ui/square-close-icon";
 import { InputField, SelectField, type SelectFieldOption } from "@/src/components/forms/fields";
 import MultiStepStepper from "@/src/components/forms/multi-step-stepper";
 import {
@@ -180,9 +181,9 @@ function DynamicPointsSection({
                 variant="ghost"
                 size="sm"
                 onClick={() => onRemovePoint(index)}
-                className="text-[var(--danger-text)]"
+                className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
               >
-                ✕
+                <SquareCloseIcon className="h-10 w-10" />
               </Button>
             ) : null}
           </div>
@@ -493,7 +494,11 @@ export default function JvpMultiStepForm({
       const response = await fetch("/api/uploads/cloudinary", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicId: asset.documentPublicId }),
+        body: JSON.stringify({
+          publicId: asset.documentPublicId,
+          requestId,
+          requestType: JVP_FORM_CODE,
+        }),
       });
 
       if (!response.ok) {
@@ -1186,7 +1191,7 @@ export default function JvpMultiStepForm({
                 removePointFromList(setFinancialOverviewPoints, "financialOverviewPoints", index)
               }
             />
-            <div className="rounded-xl border border-[var(--border)] p-4">
+            <div className="upload-section">
               <p className="text-sm font-semibold text-[var(--text)]">
                 Cashflow Forecast (including JV operational costs)
               </p>
@@ -1204,30 +1209,19 @@ export default function JvpMultiStepForm({
                   <p className="text-xs text-[var(--danger-text)]">{cashflowUploadError}</p>
                 ) : null}
                 {cashflowForecastFile ? (
-                  <div className="space-y-2">
-                    <UploadedDocumentPreview
-                      documentUrl={cashflowForecastFile.documentUrl}
-                      documentFileName={cashflowForecastFile.documentFileName}
-                      documentMimeType={cashflowForecastFile.documentMimeType}
-                      documentSizeBytes={cashflowForecastFile.documentSizeBytes}
-                    />
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          removeUploadedAsset(cashflowForecastFile, () =>
-                            setCashflowForecastFile(null)
-                          )
-                        }
-                        disabled={isBusy}
-                        className="text-[var(--danger-text)]"
-                      >
-                        Remove uploaded file
-                      </Button>
-                    </div>
-                  </div>
+                  <UploadedDocumentPreview
+                    documentUrl={cashflowForecastFile.documentUrl}
+                    documentPublicId={cashflowForecastFile.documentPublicId}
+                    documentFileName={cashflowForecastFile.documentFileName}
+                    documentMimeType={cashflowForecastFile.documentMimeType}
+                    documentSizeBytes={cashflowForecastFile.documentSizeBytes}
+                    requestId={requestId}
+                    requestType={JVP_FORM_CODE}
+                    onRemoved={() => {
+                      setCashflowForecastFile(null);
+                      setAlertState({ type: "info", message: "Uploaded document removed." });
+                    }}
+                  />
                 ) : null}
               </div>
             </div>
@@ -1306,7 +1300,7 @@ export default function JvpMultiStepForm({
                 removePointFromList(setResourcesContributionPoints, "resourcesContributionPoints", index)
               }
             />
-            <div className="rounded-xl border border-[var(--border)] p-4">
+            <div className="upload-section">
               <p className="text-sm font-semibold text-[var(--text)]">Cost Structure / Breakdown</p>
               <div className="mt-3 space-y-2">
                 <input
@@ -1322,28 +1316,19 @@ export default function JvpMultiStepForm({
                   <p className="text-xs text-[var(--danger-text)]">{costStructureUploadError}</p>
                 ) : null}
                 {costStructureFile ? (
-                  <div className="space-y-2">
-                    <UploadedDocumentPreview
-                      documentUrl={costStructureFile.documentUrl}
-                      documentFileName={costStructureFile.documentFileName}
-                      documentMimeType={costStructureFile.documentMimeType}
-                      documentSizeBytes={costStructureFile.documentSizeBytes}
-                    />
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          removeUploadedAsset(costStructureFile, () => setCostStructureFile(null))
-                        }
-                        disabled={isBusy}
-                        className="text-[var(--danger-text)]"
-                      >
-                        Remove uploaded file
-                      </Button>
-                    </div>
-                  </div>
+                  <UploadedDocumentPreview
+                    documentUrl={costStructureFile.documentUrl}
+                    documentPublicId={costStructureFile.documentPublicId}
+                    documentFileName={costStructureFile.documentFileName}
+                    documentMimeType={costStructureFile.documentMimeType}
+                    documentSizeBytes={costStructureFile.documentSizeBytes}
+                    requestId={requestId}
+                    requestType={JVP_FORM_CODE}
+                    onRemoved={() => {
+                      setCostStructureFile(null);
+                      setAlertState({ type: "info", message: "Uploaded document removed." });
+                    }}
+                  />
                 ) : null}
               </div>
             </div>
@@ -1431,7 +1416,7 @@ export default function JvpMultiStepForm({
                             type="button"
                             size="sm"
                             variant="ghost"
-                            className="text-[var(--danger-text)] hover:border-[var(--danger-bg)] hover:bg-[var(--danger-bg)]"
+                            className="h-8 w-8 border border-[var(--danger-bg)] p-0 text-[var(--danger-text)] hover:border-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
                             onClick={() => {
                               setRiskReviewMitigationItems((current) => {
                                 const next = current.filter((_, rowIndex) => rowIndex !== index);
@@ -1441,7 +1426,7 @@ export default function JvpMultiStepForm({
                             }}
                             disabled={isBusy}
                           >
-                            Remove
+                            <SquareCloseIcon className="h-10 w-10" />
                           </Button>
                         </td>
                       </tr>
@@ -1472,7 +1457,7 @@ export default function JvpMultiStepForm({
           <p className="text-sm text-[var(--text-muted)]">
             Upload final supporting document, verify details, and submit.
           </p>
-          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+          <div className="upload-section">
             <p className="text-sm font-semibold text-[var(--text)]">Final Document Upload</p>
             <input
               type="file"
@@ -1487,26 +1472,19 @@ export default function JvpMultiStepForm({
               <p className="text-xs text-[var(--danger-text)]">{finalDocumentUploadError}</p>
             ) : null}
             {uploadedDocument ? (
-              <div className="space-y-2">
-                <UploadedDocumentPreview
-                  documentUrl={uploadedDocument.documentUrl}
-                  documentFileName={uploadedDocument.documentFileName}
-                  documentMimeType={uploadedDocument.documentMimeType}
-                  documentSizeBytes={uploadedDocument.documentSizeBytes}
-                />
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeUploadedAsset(uploadedDocument, () => setUploadedDocument(null))}
-                    disabled={isBusy}
-                    className="text-[var(--danger-text)]"
-                  >
-                    Remove uploaded file
-                  </Button>
-                </div>
-              </div>
+              <UploadedDocumentPreview
+                documentUrl={uploadedDocument.documentUrl}
+                documentPublicId={uploadedDocument.documentPublicId}
+                documentFileName={uploadedDocument.documentFileName}
+                documentMimeType={uploadedDocument.documentMimeType}
+                documentSizeBytes={uploadedDocument.documentSizeBytes}
+                requestId={requestId}
+                requestType={JVP_FORM_CODE}
+                onRemoved={() => {
+                  setUploadedDocument(null);
+                  setAlertState({ type: "info", message: "Uploaded document removed." });
+                }}
+              />
             ) : null}
           </div>
 

@@ -1,12 +1,10 @@
 import "server-only";
 
-import { Resend } from "resend";
-import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
+import { sendEmail } from "@/lib/email/email-service";
+import { getCustomTemplate, htmlToPlainText } from "@/lib/email/email-templates";
 
-const HOC_ROLE_SLUG = "hoc";
-
-const resendClient = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
+const VERIFIER_ROLE = "verifier";
 
 type NotifyRequestSubmissionByEmailInput = {
   requestId: string;
@@ -35,51 +33,90 @@ type RequestEmailPayload = {
   requestType: string;
   routingType: string;
   companyName: string;
+  companyCode: string;
   submittedAt: Date | null;
 };
 
-function buildSummaryText(payload: RequestEmailPayload) {
-  const submittedAtLabel = (payload.submittedAt ?? new Date()).toISOString();
-  return [
-    `Request No: ${payload.requestNo}`,
-    `Request Type: ${payload.routingType.toUpperCase()} / ${payload.requestType.toUpperCase()}`,
-    `Title: ${payload.requestTitle}`,
-    `Company: ${payload.companyName}`,
-    `Submitted At (UTC): ${submittedAtLabel}`,
-  ].join("\n");
+function formatSubmittedOnUtc(date: Date | null) {
+  const d = date ?? new Date();
+  return (
+    new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeStyle: "short",
+      timeZone: "UTC",
+    }).format(d) + " UTC"
+  );
 }
 
-function buildSummaryHtml(payload: RequestEmailPayload) {
-  const submittedAtLabel = (payload.submittedAt ?? new Date()).toISOString();
+/** Display label for requestor submission email — matches product copy ("New Request"). */
+function statusLabelForRequestorEmail(dbStatus: string) {
+  const s = dbStatus.trim();
+  if (s === "New") {
+    return "New Request";
+  }
+  return s || "New Request";
+}
+
+function buildRequestorSubmissionBodyHtml(options: {
+  requestNo: string;
+  requestorName: string;
+  requestorEmail: string;
+  companyName: string;
+  requestType: string;
+  routingType: string;
+  submittedAt: Date | null;
+  status: string;
+}) {
+  const {
+    requestNo,
+    requestorName,
+    requestorEmail,
+    companyName,
+    requestType,
+    routingType,
+    submittedAt,
+    status,
+  } = options;
+
+  const requestTypeLine = `${routingType.toUpperCase()} / ${requestType.toUpperCase()}`;
+  const submittedBy =
+    requestorEmail.length > 0
+      ? `${escapeHtml(requestorName)} / ${escapeHtml(requestorEmail)}`
+      : escapeHtml(requestorName);
+  const statusLabel = escapeHtml(statusLabelForRequestorEmail(status));
+
   return `
-    <ul>
-      <li><strong>Request No:</strong> ${escapeHtml(payload.requestNo)}</li>
-      <li><strong>Request Type:</strong> ${escapeHtml(payload.routingType.toUpperCase())} / ${escapeHtml(payload.requestType.toUpperCase())}</li>
-      <li><strong>Title:</strong> ${escapeHtml(payload.requestTitle)}</li>
-      <li><strong>Company:</strong> ${escapeHtml(payload.companyName)}</li>
-      <li><strong>Submitted At (UTC):</strong> ${escapeHtml(submittedAtLabel)}</li>
-    </ul>
+    <strong>***** THIS IS SYSTEM GENERATED EMAIL. PLEASE DO NOT REPLY *****</strong><br><br>
+    Dear ${escapeHtml(requestorName)},<br><br>
+    Your request has been successfully submitted.<br><br>
+    <strong>Request Details:</strong><br>
+    &#8226; Request ID: ${escapeHtml(requestNo)}<br>
+    &#8226; Submitted By: ${submittedBy}<br>
+    &#8226; Company: ${escapeHtml(companyName)}<br>
+    &#8226; Request Type: ${escapeHtml(requestTypeLine)}<br>
+    &#8226; Submitted On: ${escapeHtml(formatSubmittedOnUtc(submittedAt))}<br><br>
+    <strong>Current Status:</strong><br>
+    &#8226; Status: <strong>${statusLabel}</strong><br><br>
+    Your request is currently in progress. You will receive further updates once the status changes.<br><br>
+    Thank you,<br>
+    GCP Support Team
   `;
+}
+
+function buildSummaryDetailsHtml(payload: RequestEmailPayload) {
+  const submittedAtLabel = (payload.submittedAt ?? new Date()).toISOString();
+  return [
+    `<strong>Request No:</strong> ${escapeHtml(payload.requestNo)}<br>`,
+    `<strong>Request Type:</strong> ${escapeHtml(payload.routingType.toUpperCase())} / ${escapeHtml(payload.requestType.toUpperCase())}<br>`,
+    `<strong>Title:</strong> ${escapeHtml(payload.requestTitle)}<br>`,
+    `<strong>Company:</strong> ${escapeHtml(payload.companyName)} (${escapeHtml(payload.companyCode)})<br>`,
+    `<strong>Submitted At (UTC):</strong> ${escapeHtml(submittedAtLabel)}`,
+  ].join("");
 }
 
 export async function notifyRequestSubmissionByEmail({
   requestId,
 }: NotifyRequestSubmissionByEmailInput) {
-  if (!resendClient) {
-    console.warn(
-      "Skipping request notification email: RESEND_API_KEY is not configured."
-    );
-    return;
-  }
-
-  const from = env.RESEND_FROM_EMAIL.trim();
-  if (!from) {
-    console.warn(
-      "Skipping request notification email: RESEND_FROM_EMAIL is not configured."
-    );
-    return;
-  }
-
   try {
     const request = await prisma.request.findUnique({
       where: { id: requestId },
@@ -93,7 +130,9 @@ export async function notifyRequestSubmissionByEmail({
         requestorEmail: true,
         companyId: true,
         companyName: true,
+        companyCode: true,
         submittedAt: true,
+        status: true,
       },
     });
 
@@ -102,6 +141,7 @@ export async function notifyRequestSubmissionByEmail({
     }
 
     const requestorEmail = normalizeEmail(request.requestorEmail);
+    const requestorEmailDisplay = request.requestorEmail?.trim() || "";
     const requestorName = request.requestorName?.trim() || "Requestor";
 
     const summaryPayload: RequestEmailPayload = {
@@ -110,40 +150,92 @@ export async function notifyRequestSubmissionByEmail({
       requestType: request.requestType,
       routingType: request.routingType,
       companyName: request.companyName,
+      companyCode: request.companyCode,
       submittedAt: request.submittedAt,
     };
 
-    const summaryText = buildSummaryText(summaryPayload);
-    const summaryHtml = buildSummaryHtml(summaryPayload);
+    const summaryDetailsHtml = buildSummaryDetailsHtml(summaryPayload);
+    const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/requests/${request.id}`;
 
     if (requestorEmail) {
-      const { error } = await resendClient.emails.send({
-        from,
-        to: [requestorEmail],
-        subject: `Request submitted: ${request.requestNo}`,
-        text: [
-          `Hi ${requestorName},`,
-          "",
-          "Your request has been submitted successfully.",
-          "",
-          summaryText,
-          "",
-          "This is an automated message from GCP Central.",
-        ].join("\n"),
-        html: `
-          <p>Hi ${escapeHtml(requestorName)},</p>
-          <p>Your request has been submitted successfully.</p>
-          ${summaryHtml}
-          <p>This is an automated message from GCP Central.</p>
-        `,
+      const requestorSubject = `GCP/GCPC Request Submitted – [Request ID: ${request.requestNo}]`;
+      const requestorDetailsHtml = buildRequestorSubmissionBodyHtml({
+        requestNo: request.requestNo,
+        requestorName,
+        requestorEmail: requestorEmailDisplay,
+        companyName: request.companyName,
+        requestType: request.requestType,
+        routingType: request.routingType,
+        submittedAt: request.submittedAt,
+        status: request.status,
+      });
+      const requestorHtml = getCustomTemplate(
+        requestorSubject,
+        requestorDetailsHtml,
+        "View Request",
+        requestUrl,
+        "GCP Central"
+      );
+
+      const requestorResult = await sendEmail({
+        to: requestorEmail,
+        subject: requestorSubject,
+        html: requestorHtml,
+        text: htmlToPlainText(requestorHtml),
       });
 
-      if (error) {
-        console.error("Failed to send request submission email to requestor:", error);
+      if (!requestorResult.success) {
+        console.error("Failed to send request submission email to requestor:", {
+          requestId,
+          error: requestorResult.error,
+        });
       }
     }
 
-   
+    const verifierUsers = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { primaryRole: VERIFIER_ROLE },
+          { roles: { has: VERIFIER_ROLE } },
+        ],
+      },
+      select: { email: true, emailLower: true },
+    });
+
+    const verifierEmails = dedupeEmails(
+      verifierUsers.map((u) => normalizeEmail(u.emailLower || u.email))
+    ).filter((email) => email.length > 0 && email !== requestorEmail);
+
+    if (verifierEmails.length > 0) {
+      const verifierSubject = `New request submitted: ${request.requestNo}`;
+      const verifierDetailsHtml = `
+        A new request has been submitted in GCP Central.<br><br>
+        ${summaryDetailsHtml}<br><br>
+        <strong>Submitted by:</strong> ${escapeHtml(requestorName)} (${escapeHtml(requestorEmailDisplay || "email not on file")})
+      `;
+      const verifierHtml = getCustomTemplate(
+        verifierSubject,
+        verifierDetailsHtml,
+        "View Request",
+        requestUrl,
+        "GCP Central"
+      );
+
+      const verifierResult = await sendEmail({
+        to: verifierEmails,
+        subject: verifierSubject,
+        html: verifierHtml,
+        text: htmlToPlainText(verifierHtml),
+      });
+
+      if (!verifierResult.success) {
+        console.error("Failed to send request submission email to verifiers:", {
+          requestId,
+          error: verifierResult.error,
+        });
+      }
+    }
   } catch (error) {
     console.error("Request submission email notification failed:", error);
   }
