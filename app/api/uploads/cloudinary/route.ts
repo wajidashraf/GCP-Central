@@ -136,11 +136,12 @@ export async function DELETE(req: Request) {
         await prisma.rppRequest.updateMany({ where: { requestId }, data: clearData });
       } else if (requestType === "VAP") {
         await prisma.vapRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "CPR") {
-        await prisma.cprRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "CI") {
-        await prisma.ciRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "OTHERS") {
+      } else if (
+        requestType === "CPR" ||
+        requestType === "CI" ||
+        requestType === "OTHERS"
+      ) {
+        // CPR, CI, and OTHERS forms persist uploads on `OtherRequest` (see _actions/cpr.ts, ci.ts, others.ts).
         await prisma.otherRequest.updateMany({ where: { requestId }, data: clearData });
       }
     }
