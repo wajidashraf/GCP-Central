@@ -1,13 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type FilterBarProps = {
   companyOptions: string[];
+  projectOptions: string[];
   statusOptions: string[];
   typeOptions: string[];
   selectedCompany: string;
+  selectedProject: string;
   selectedStatus: string;
   selectedType: string;
   sortBy: string;
@@ -16,9 +19,11 @@ type FilterBarProps = {
 
 export default function FilterBar({
   companyOptions,
+  projectOptions,
   statusOptions,
   typeOptions,
   selectedCompany,
+  selectedProject,
   selectedStatus,
   selectedType,
   sortBy,
@@ -29,6 +34,7 @@ export default function FilterBar({
   const updateFilter = (key: string, value: string) => {
     const next = {
       company: selectedCompany,
+      project: selectedProject,
       status: selectedStatus,
       type: selectedType,
       sortBy,
@@ -37,6 +43,7 @@ export default function FilterBar({
     };
     const params = new URLSearchParams();
     if (next.company) params.set('company', next.company);
+    if (next.project) params.set('project', next.project);
     if (next.status) params.set('status', next.status);
     if (next.type) params.set('type', next.type);
     if (next.sortBy) params.set('sortBy', next.sortBy);
@@ -44,11 +51,13 @@ export default function FilterBar({
     router.push(`/requests?${params.toString()}`);
   };
 
-  const hasActiveFilters = Boolean(selectedCompany || selectedStatus || selectedType);
+  const hasActiveFilters = Boolean(
+    selectedCompany || selectedProject || selectedStatus || selectedType
+  );
 
   return (
     <div className="surface-card p-4">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
           Company
           <select
@@ -60,6 +69,22 @@ export default function FilterBar({
             {companyOptions.map((company) => (
               <option key={company} value={company}>
                 {company}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-subtle)]">
+          Project
+          <select
+            value={selectedProject}
+            onChange={(e) => updateFilter('project', e.target.value)}
+            className="input mt-1 h-9 w-full py-0 text-sm"
+          >
+            <option value="">All projects</option>
+            {projectOptions.map((project) => (
+              <option key={project} value={project}>
+                {project}
               </option>
             ))}
           </select>
@@ -97,33 +122,19 @@ export default function FilterBar({
           </select>
         </label>
 
-        <div className="flex items-end justify-end">
-          {hasActiveFilters && (
-           <Link
-           href="/requests"
-           className="inline-flex items-center gap-1.5 h-9 px-3 badge badge--warning"
-         >
-              {/* ✕ icon — no extra dependency needed */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-              Reset filters
-            </Link>
-          )}
-        </div>
       </div>
+        <div className="flex items-end justify-center rounded-md mt-3 w-full bg-primary">
+          {hasActiveFilters ? (
+            <Link
+              href="/requests"
+              className=" inline-flex h-12 w-150 shrink-0 items-center justify-center rounded-md p-0 text-white"
+              title="Reset filters"
+              aria-label="Reset filters"
+            > 
+              <RotateCcw className="h-5 w-5 mr-2 align-center" aria-hidden /> Reset Filters
+            </Link>
+          ) : null}
+        </div>
     </div>
   );
 }

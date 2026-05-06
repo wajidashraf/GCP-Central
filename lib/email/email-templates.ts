@@ -437,6 +437,53 @@ export function getEngagementStatusUpdateTemplate(
   return getEmailLayout(content, appName);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Welcome email when an administrator creates a new user account.
+ */
+export function getNewUserAccountEmailHtml(
+  recipientName: string,
+  username: string,
+  plainPassword: string,
+  roleLabels: string[],
+  loginUrl: string,
+  appName: string = "GCP Central"
+): string {
+  const safeName = escapeHtml(recipientName.trim() || "there");
+  const safeUser = escapeHtml(username.trim());
+  const safePassword = escapeHtml(plainPassword);
+  const rolesList =
+    roleLabels.length > 0
+      ? `<ul style="margin: 8px 0 0 0; padding-left: 20px;">${roleLabels
+          .map((label) => `<li>${escapeHtml(label)}</li>`)
+          .join("")}</ul>`
+      : "<p style=\"margin: 8px 0 0 0;\">No additional roles.</p>";
+
+  const content = `
+    <h2>Your ${escapeHtml(appName)} account</h2>
+    <p>Hello ${safeName},</p>
+    <p>An administrator has created an account for you. Use the credentials below to sign in.</p>
+    <div class="alert" style="background-color: #eff6ff; border-left-color: #3b82f6;">
+      <strong>Sign-in URL:</strong><br>
+      <a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a><br><br>
+      <strong>Username:</strong> ${safeUser}<br>
+      <strong>Temporary password:</strong> ${safePassword}
+    </div>
+    <p><strong>Your roles</strong></p>
+    ${rolesList}
+    <p style="font-size: 14px; color: #6b7280;">Please sign in and change your password from the account settings if that option is available, or contact your administrator if you need help.</p>
+  `;
+
+  return getEmailLayout(content, appName);
+}
+
 /**
  * Plain text fallback generator
  * Extracts text from HTML (basic implementation)

@@ -66,7 +66,7 @@ export default async function HomePage() {
             <Button href={reviewRequestsHref} variant="secondary" size="lg" className="h-14 bg-white/95 px-8 text-lg">
               Review Requests
             </Button>
-          </div>
+            </div>
 
           <div className="mx-auto mt-10 max-w-md rounded-2xl border border-[var(--border)] bg-white/85 p-4 shadow-[var(--shadow-soft)] [--accent:#0ea5e9] [--accent-light:#e0f2fe] [--primary:#1d4ed8] [--primary-light:#dbeafe] [--secondary:#0284c7] [--secondary-light:#e0f2fe]">
             <StepsIllustration className="mx-auto w-48 sm:w-52" />

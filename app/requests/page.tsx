@@ -87,6 +87,7 @@ function cleanRequestNo(requestNo: string) {
 type RequestsPageProps = {
   searchParams: Promise<{
     company?: string;
+    project?: string;
     status?: string;
     type?: string;
     sortBy?: 'requestNo' | 'submitted';
@@ -139,6 +140,65 @@ function buildVisibilityWhere(
   return { OR: scopedFilters };
 }
 
+const PROJECT_NAME_SELECT = {
+  rtp: { select: { projectName: true } },
+  pbl: { select: { project: { select: { projectName: true } } } },
+  jvp: { select: { project: { select: { projectName: true } } } },
+  rpp: { select: { project: { select: { projectName: true } } } },
+  stsp: { select: { project: { select: { projectName: true } } } },
+  caa: { select: { project: { select: { projectName: true } } } },
+  pcca: { select: { project: { select: { projectName: true } } } },
+  pp: { select: { project: { select: { projectName: true } } } },
+  vap: { select: { project: { select: { projectName: true } } } },
+  other: { select: { project: { select: { projectName: true } } } },
+} as const;
+
+type ProjectNameRow = {
+  rtp: { projectName: string } | null;
+  pbl: { project: { projectName: string } } | null;
+  jvp: { project: { projectName: string } } | null;
+  rpp: { project: { projectName: string } } | null;
+  stsp: { project: { projectName: string } } | null;
+  caa: { project: { projectName: string } } | null;
+  pcca: { project: { projectName: string } } | null;
+  pp: { project: { projectName: string } } | null;
+  vap: { project: { projectName: string } } | null;
+  other: { project: { projectName: string } } | null;
+};
+
+function displayProjectName(row: ProjectNameRow): string | null {
+  const name =
+    row.rtp?.projectName ??
+    row.pbl?.project?.projectName ??
+    row.jvp?.project?.projectName ??
+    row.rpp?.project?.projectName ??
+    row.stsp?.project?.projectName ??
+    row.caa?.project?.projectName ??
+    row.pcca?.project?.projectName ??
+    row.pp?.project?.projectName ??
+    row.vap?.project?.projectName ??
+    row.other?.project?.projectName ??
+    null;
+  return name?.trim() ? name : null;
+}
+
+function whereRequestProjectNameEquals(projectName: string): Prisma.RequestWhereInput {
+  return {
+    OR: [
+      { rtp: { projectName } },
+      { pbl: { project: { projectName } } },
+      { jvp: { project: { projectName } } },
+      { rpp: { project: { projectName } } },
+      { stsp: { project: { projectName } } },
+      { caa: { project: { projectName } } },
+      { pcca: { project: { projectName } } },
+      { pp: { project: { projectName } } },
+      { vap: { project: { projectName } } },
+      { other: { project: { projectName } } },
+    ],
+  };
+}
+
 export default async function RequestsPage({ searchParams }: RequestsPageProps) {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
@@ -147,6 +207,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
 
   const params = await searchParams;
   const selectedCompany = params.company?.trim() ?? '';
+  const selectedProject = params.project?.trim() ?? '';
   const selectedStatus = params.status?.trim() ?? '';
   const selectedType = params.type?.trim() ?? '';
   const sortBy = params.sortBy === 'requestNo' || params.sortBy === 'submitted' ? params.sortBy : 'submitted';
@@ -186,6 +247,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     // AFTER — add baseWhere that is always applied:
     const filterWhere: Prisma.RequestWhereInput = {
       ...(selectedCompany ? { companyName: selectedCompany } : {}),
+      ...(selectedProject ? whereRequestProjectNameEquals(selectedProject) : {}),
       ...(selectedStatus ? { status: selectedStatus } : {}),
       ...(selectedType
         ? { OR: [{ requestType: selectedType }, { routingType: selectedType }] }
@@ -332,11 +394,35 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     ),
   ].sort();
 
+  let projectOptions: string[] = [];
+  try {
+    const projectRows = await prisma.request.findMany({
+      where: visibilityWhere,
+      select: PROJECT_NAME_SELECT,
+    });
+    const names = new Set<string>();
+    for (const row of projectRows) {
+      const n = displayProjectName(row as ProjectNameRow);
+      if (n) {
+        names.add(n);
+      }
+    }
+    projectOptions = [...names].sort((a, b) => a.localeCompare(b));
+  } catch {
+    projectOptions = [];
+  }
+
+  const projectOptionsForFilter =
+    selectedProject && !projectOptions.includes(selectedProject)
+      ? [...projectOptions, selectedProject].sort((a, b) => a.localeCompare(b))
+      : projectOptions;
+
   const buildSortHref = (column: 'requestNo' | 'submitted') => {
     const isCurrentColumn = sortBy === column;
     const nextDir: 'asc' | 'desc' = isCurrentColumn ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
     const query = new URLSearchParams();
     if (selectedCompany) query.set('company', selectedCompany);
+    if (selectedProject) query.set('project', selectedProject);
     if (selectedStatus) query.set('status', selectedStatus);
     if (selectedType) query.set('type', selectedType);
     query.set('sortBy', column);
@@ -369,9 +455,11 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
 
       <FilterBar
         companyOptions={companyOptions}
+        projectOptions={projectOptionsForFilter}
         statusOptions={statusOptions}
         typeOptions={typeOptions}
         selectedCompany={selectedCompany}
+        selectedProject={selectedProject}
         selectedStatus={selectedStatus}
         selectedType={selectedType}
         sortBy={sortBy}
@@ -405,17 +493,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
             {requests.length > 0 ? (
               requests.map((request) => {
                 const projectName =
-                  request.rtp?.projectName ??
-                  request.pbl?.project?.projectName ??
-                  request.jvp?.project?.projectName ??
-                  request.rpp?.project?.projectName ??
-                  request.stsp?.project?.projectName ??
-                  request.caa?.project?.projectName ??
-                  request.pcca?.project?.projectName ??
-                  request.pp?.project?.projectName ??
-                  request.vap?.project?.projectName ??
-                  request.other?.project?.projectName ??
-                  '—';
+                  displayProjectName(request as ProjectNameRow) ?? '—';
                 const typeWithChannel = `${request.requestType} - ${request.routingType}`;
 
                 return (

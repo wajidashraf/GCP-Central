@@ -1,0 +1,9 @@
+Title,username,usernameLower,entraId,primaryRole,companyCode,companyName
+Ahmad Wajid,wajid.admin,wajid.admin,,admin,ACME-001,Acme Construction Sdn Bhd
+Siti Rahimah,siti.rahimah,siti.rahimah,,requestor,ACME-001,Acme Construction Sdn Bhd
+Hafiz Razali,hafiz.razali,hafiz.razali,,verifier,BLDRT-002,BuildRight Engineering Sdn Bhd
+Nurul Izzah,nurul.izzah,nurul.izzah,,reviewer,NEXUS-003,Nexus Infrastructure Sdn Bhd
+Rizwan Malik,rizwan.malik,rizwan.malik,,working_gcpc,BLDRT-002,BuildRight Engineering Sdn Bhd
+Farah Azizah,farah.azizah,farah.azizah,,hoc,PINNC-004,Pinnacle Works Sdn Bhd
+Amirul Hakim,amirul.hakim,amirul.hakim,,endorser,SUMMT-005,Summit Contractors Sdn Bhd
+Zulaikha Nora,zulaikha.nora,zulaikha.nora,,main_committee,NEXUS-003,Nexus Infrastructure Sdn Bhd

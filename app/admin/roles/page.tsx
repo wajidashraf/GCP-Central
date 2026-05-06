@@ -2,6 +2,7 @@ import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { USER_ROLES, USER_ROLE_LABELS, type UserRole } from '@/src/types/auth';
+import AddUserForm from './add-user-form';
 import PendingSubmitButton from './pending-submit-button';
 import {
   toggleUserActiveStatusAction,
@@ -80,7 +81,7 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
     );
   }
 
-  const [dbRoles, users] = await Promise.all([
+  const [dbRoles, users, companies] = await Promise.all([
     prisma.role.findMany({
       select: {
         slug: true,
@@ -103,6 +104,14 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
             companyCode: true,
           },
         },
+      },
+    }),
+    prisma.company.findMany({
+      orderBy: { companyName: 'asc' },
+      select: {
+        id: true,
+        companyName: true,
+        companyCode: true,
       },
     }),
   ]);
@@ -198,6 +207,8 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
           </p>
         ) : null}
       </div>
+
+      <AddUserForm roleOptions={roleOptions} companies={companies} />
 
       <div className="table-shell">
         <table>

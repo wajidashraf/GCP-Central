@@ -169,10 +169,23 @@ textarea {
   border-color: #4698fc;
 }
 
+
 .badge--danger {
   background: var(--danger-bg);
   color: var(--danger-text);
   border-color: #fbabab;
+}
+
+.bg-primary {
+  background: #3082e5;
+  color: #fff;
+}
+.text-white {
+  color: #fff !important;
+}
+.bg-secondary { 
+  background: #f8f9fc;
+  color: #0f172a;
 }
 
 .alert {
