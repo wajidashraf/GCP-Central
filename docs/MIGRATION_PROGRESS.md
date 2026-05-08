@@ -35,21 +35,21 @@ There are **13 form types** wired through `app/submit/[channel]/[code]/`. Each f
 | 7 | **R-PCCA** (Revised PCCA) | reuses `_actions/pcca.ts` | `RPCCA_REQUESTS_LIST_ID` (separate from PCCA) | ✅ uploads to `/R-PCCA/r-pcca_{requestId}/` | ✅ Done |
 | 8 | **OTHERS** | `_actions/others.ts` | `OTHERS_REQUESTS_LIST_ID` | ✅ uploads to `/OTHERS/others_{requestId}/` | ✅ Done |
 | 9 | **CAA** | `_actions/caa.ts` | `CAA_REQUESTS_LIST_ID` | ✅ uploads to `/CAA/caa_{requestId}/` (final document **and** Project Organisation & Manpower Chart image) | ✅ Done |
-| 10 | **CI** | `_actions/ci.ts` | Mongo `otherRequest` collection | ❌ Cloudinary | 🟡 Hybrid |
-| 11 | **CPR** | `_actions/cpr.ts` | Mongo `otherRequest` collection | ❌ Cloudinary | 🟡 Hybrid |
+| 10 | **CI** | `_actions/ci.ts` | `CI_REQUESTS_LIST_ID` | ✅ uploads to `/CI/ci_{requestId}/` | ✅ Done |
+| 11 | **CPR** | `_actions/cpr.ts` | `CPR_REQUESTS_LIST_ID` | ✅ uploads to `/CPR/cpr_{requestId}/` | ✅ Done |
 | 12 | **JVP** | `_actions/jvp.ts` | `JVP_REQUESTS_LIST_ID` | ✅ uploads to `/JVP/jvp_{requestId}/` | ✅ Done |
 | 13 | **STSP** | `_actions/stsp.ts` | `STSP_REQUESTS_LIST_ID` | ✅ uploads to `/STSP/stsp_{requestId}/` | ✅ Done |
 
-### Note on the "Hybrid" forms (CI / CPR)
+### CI and CPR now completed
 
-Both still:
+CI and CPR are now fully SharePoint-native:
 
-1. Create the parent `Request` row in MongoDB via `prisma.request.create` and read project info from SharePoint.
-2. Create / update the child record (`otherRequest`) in MongoDB.
-3. On final submit, call `syncRequestParentToSharePoint(requestId)` from `lib/sharepoint/requests.ts` to **mirror** the parent record into the `Requests` SharePoint list.
-4. Continue to upload documents to **Cloudinary** (Drive branch in `app/api/uploads/cloudinary/route.ts` does not include these request types).
+1. Base request creation writes directly to the SharePoint `Requests` list.
+2. Child form details write to dedicated child lists (`CI_REQUESTS_LIST_ID`, `CPR_REQUESTS_LIST_ID`).
+3. Final submission updates child file metadata columns and parent request status/acknowledgement in SharePoint.
+4. Uploads are routed to SharePoint Drive folders (`/CI/ci_{requestId}/`, `/CPR/cpr_{requestId}/`) via `app/api/uploads/cloudinary/route.ts`.
 
-This means the data exists in **both** MongoDB and SharePoint for these forms — they are not yet self-contained on SharePoint.
+No Mongo mirror/sync step is required for CI/CPR anymore.
 
 ### Note on CAA — first form with multiple file fields
 
@@ -73,7 +73,7 @@ Both files are uploaded into the same SharePoint Drive folder (`/CAA/caa_{reques
 |---|---|---|
 | `lib/sharepoint/lists.ts` | Generic Graph CRUD helpers (`listItems`, `getItem`, `createItem`, `updateItem`, `deleteItem`) + typed helpers for `Users` and `Companies` lists. | ✅ Done |
 | `lib/sharepoint/constants.ts` | List/file/field name constants. | ✅ Done |
-| `lib/sharepoint/requests.ts` | `syncRequestParentToSharePoint(requestId)` — mirrors the Mongo parent `Request` into the SharePoint `Requests` list. Used by the hybrid forms. | ✅ Done |
+| `lib/sharepoint/requests.ts` | `syncRequestParentToSharePoint(requestId)` — mirrors legacy Mongo parent `Request` into SharePoint when needed. | ✅ Done |
 | `lib/sharepoint/pbl.ts` | Full PBL CRUD on SharePoint (base request, project details, bidders, submission, document clearing). | ✅ Done |
 | `lib/sharepoint/pp.ts` | Full PP CRUD on SharePoint. | ✅ Done |
 | `lib/sharepoint/rpp.ts` | Full RPP CRUD on SharePoint. | ✅ Done |
@@ -82,8 +82,8 @@ Both files are uploaded into the same SharePoint Drive folder (`/CAA/caa_{reques
 | `lib/sharepoint/pcca.ts` | Full PCCA / R-PCCA CRUD on SharePoint (routes to separate child lists by request type: `PCCA_REQUESTS_LIST_ID` vs `RPCCA_REQUESTS_LIST_ID`). | ✅ Done |
 | `lib/sharepoint/others.ts` | Full OTHERS CRUD on SharePoint. | ✅ Done |
 | `lib/sharepoint/caa.ts` | Full CAA CRUD on SharePoint, including JSON-encoded table data, the Project Organisation & Manpower Chart asset, and the final document. Also exports `clearCaaDocumentByRequestUuid`, `clearCaaOrganisationChartByRequestUuid`, and `resolveCaaUploadedFieldByPublicId` for the upload route. | ✅ Done |
-| `lib/sharepoint/ci.ts` | — | 🔴 Pending |
-| `lib/sharepoint/cpr.ts` | — | 🔴 Pending |
+| `lib/sharepoint/ci.ts` | Full CI CRUD on SharePoint, including JSON-encoded composite details and document clear helper (`clearCiDocumentByRequestUuid`). | ✅ Done |
+| `lib/sharepoint/cpr.ts` | Full CPR CRUD on SharePoint, including JSON-encoded composite details and document clear helper (`clearCprDocumentByRequestUuid`). | ✅ Done |
 | `lib/sharepoint/jvp.ts` | Full JVP CRUD on SharePoint, including JSON-encoded dynamic/table fields and per-file metadata slots (`document`, `cashflowForecast`, `costStructure`) with targeted clear helpers for upload DELETE resolution. | ✅ Done |
 | `lib/sharepoint/stsp.ts` | Full STSP CRUD on SharePoint, including JSON-encoded dynamic/table fields and per-file metadata slots (`document`, `contractStructure`, `revenueVsCost`, `cashflow`) with targeted clear helpers for upload DELETE resolution. | ✅ Done |
 
@@ -100,10 +100,10 @@ The unified upload handler is `app/api/uploads/cloudinary/route.ts`.
 Routed to **SharePoint Drive** via `getDriveId()` for these `requestType`s:
 
 ```
-RTP, PBL, JVP, STSP, PP, PCCA, R-PCCA, VAP, RPP, OTHERS, CAA
+RTP, PBL, JVP, STSP, PP, PCCA, R-PCCA, VAP, RPP, OTHERS, CAA, CPR, CI
 ```
 
-For everything else (`CI`, `CPR`, or any unknown) the file is still uploaded to **Cloudinary** through `uploadToCloudinary` from `lib/cloudinary.ts`.
+For everything else (unknown/unmigrated `requestType`), the file is uploaded to **Cloudinary** through `uploadToCloudinary` from `lib/cloudinary.ts`.
 
 ### DELETE (clear uploaded file)
 
@@ -119,7 +119,8 @@ For everything else (`CI`, `CPR`, or any unknown) the file is still uploaded to 
 | CAA | SharePoint Drive | Resolves which CAA column owns the deleted Drive item via `resolveCaaUploadedFieldByPublicId`, then calls **either** `clearCaaDocumentByRequestUuid` (final document) **or** `clearCaaOrganisationChartByRequestUuid` (Org & Manpower Chart). |
 | JVP | SharePoint Drive | Resolves JVP file slot by Drive item ID via `resolveJvpUploadedFieldByPublicId`, then clears **document**, **cashflowForecast**, or **costStructure** metadata columns. |
 | STSP | SharePoint Drive | Resolves STSP file slot by Drive item ID via `resolveStspUploadedFieldByPublicId`, then clears **document**, **contractStructure**, **revenueVsCost**, or **cashflow** metadata columns. |
-| CPR / CI | Cloudinary | `prisma.otherRequest.updateMany` |
+| CPR | SharePoint Drive | `clearCprDocumentByRequestUuid` |
+| CI | SharePoint Drive | `clearCiDocumentByRequestUuid` |
 
 ---
 
@@ -177,12 +178,13 @@ OTHERS_REQUESTS_LIST_ID
 CAA_REQUESTS_LIST_ID
 JVP_REQUESTS_LIST_ID
 STSP_REQUESTS_LIST_ID
+CI_REQUESTS_LIST_ID
+CPR_REQUESTS_LIST_ID
 ```
 
 Not yet defined / planned:
 
 ```
-CI_REQUESTS_LIST_ID, CPR_REQUESTS_LIST_ID
 SIGNATORY_MEMBERS_LIST_ID, REVIEWER_SUGGESTIONS_LIST_ID
 VERIFIER_COMMENTS_LIST_ID, REQUEST_SIGNATURES_LIST_ID
 ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
@@ -192,10 +194,9 @@ ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
 
 ## 7. What's Remaining
 
-### Forms (2 left)
+### Forms
 
-- 🔴 **CI** — write `lib/sharepoint/ci.ts` (currently lumped under `otherRequest` in Mongo) and migrate `_actions/ci.ts`. Add a dedicated `CI_REQUESTS_LIST_ID`. Wire CI into the Drive branch.
-- 🔴 **CPR** — same as CI, write `lib/sharepoint/cpr.ts` and migrate `_actions/cpr.ts`. Add `CPR_REQUESTS_LIST_ID`. Wire CPR into the Drive branch.
+- ✅ All 13 submit forms are now migrated to SharePoint lists + SharePoint document library.
 
 ### Post-Submit & Admin APIs
 
@@ -216,8 +217,8 @@ ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
 
 | Layer | Done | Remaining |
 |---|---|---|
-| Submit forms | 11 / 13 (PBL, PP, RPP, RTP, VAP, PCCA, R-PCCA, OTHERS, CAA, JVP, STSP) | 2 / 13 (CI, CPR) |
-| File storage per form | 11 / 13 on SharePoint Drive | 2 / 13 on Cloudinary |
+| Submit forms | 13 / 13 | 0 / 13 |
+| File storage per form | 13 / 13 on SharePoint Drive | 0 / 13 on Cloudinary |
 | Request listing & detail pages | ✅ | — |
 | Verifier / Reviewer / Working GCPC review APIs | ✅ | — |
 | Companies & Users data | ✅ | — |
