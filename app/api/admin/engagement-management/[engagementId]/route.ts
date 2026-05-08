@@ -28,6 +28,11 @@ type ReviewerContact = {
   email: string | null;
 };
 
+type EmailRecipientWithEmail = {
+  name: string;
+  email: string;
+};
+
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -85,7 +90,7 @@ async function sendEngagementChangeEmails(options: {
   ];
 
   const seen = new Set<string>();
-  const dedupedRecipients = recipients.filter((item) => {
+  const dedupedRecipients = recipients.filter((item): item is EmailRecipientWithEmail => {
     if (!item.email || seen.has(item.email)) return false;
     seen.add(item.email);
     return true;
