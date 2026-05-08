@@ -20,7 +20,7 @@ function escapeHtml(value: string) {
 }
 
 function dedupeEmails(emails: string[]) {
-  return [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(emails.map((e: string) => e.trim().toLowerCase()).filter(Boolean))];
 }
 
 async function notifyReviewersOfWorkingGcpcSuggestion(
@@ -42,6 +42,10 @@ async function notifyReviewersOfWorkingGcpcSuggestion(
 
   if (!requestRecord) return;
 
+  type ReviewerUser = {
+    email: string;
+  };
+
   const reviewerUsers = await prisma.user.findMany({
     where: {
       isActive: true,
@@ -50,7 +54,7 @@ async function notifyReviewersOfWorkingGcpcSuggestion(
     select: { email: true },
   });
 
-  const recipients = dedupeEmails(reviewerUsers.map((u) => u.email));
+  const recipients = dedupeEmails(reviewerUsers.map((u: ReviewerUser) => u.email));
   if (recipients.length === 0) return;
 
   const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;

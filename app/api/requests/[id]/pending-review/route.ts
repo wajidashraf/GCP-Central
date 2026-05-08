@@ -20,34 +20,41 @@ function escapeHtml(value: string) {
 }
 
 function dedupeEmails(emails: string[]) {
-  return [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(emails.map((e: string) => e.trim().toLowerCase()).filter(Boolean))];
 }
+
+type RequestListItem = {
+  id: string;
+  uuid?: string;
+  requestNo?: string;
+  requestTitle?: string;
+  requestType?: string;
+  routingType?: string;
+  companyName?: string;
+  companyCode?: string;
+};
+
+type SignatoryMember = {
+  email?: string;
+  name?: string;
+};
 
 async function notifySignatoryGroup(requestId: string) {
   const requestsListId = process.env.REQUESTS_LIST_ID;
   if (!requestsListId) return;
-  const requestItems = await listItems<{
-    id: string;
-    uuid?: string;
-    requestNo?: string;
-    requestTitle?: string;
-    requestType?: string;
-    routingType?: string;
-    companyName?: string;
-    companyCode?: string;
-  }>(requestsListId);
-  const requestRecord = requestItems.find((item) => {
+  const requestItems = await listItems<RequestListItem>(requestsListId);
+  const requestRecord = requestItems.find((item: RequestListItem) => {
     const uuid = (item.uuid ?? '').trim();
     return item.id === requestId || uuid === requestId;
   });
 
   if (!requestRecord) return;
 
-  const signatoryMembers = await listItems<{ email?: string; name?: string }>(
+  const signatoryMembers = await listItems<SignatoryMember>(
     process.env.USERS_LIST_ID ?? requestsListId,
   );
 
-  const recipients = dedupeEmails(signatoryMembers.map((m) => m.email ?? ''));
+  const recipients = dedupeEmails(signatoryMembers.map((m: SignatoryMember) => m.email ?? ''));
   if (recipients.length === 0) return;
 
   const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
@@ -89,13 +96,19 @@ export async function POST(
       );
     }
 
+    type RequestStatusItem = {
+      id: string;
+      uuid?: string;
+      status?: string;
+    };
+
     const { id } = await params;
     const requestsListId = process.env.REQUESTS_LIST_ID;
     if (!requestsListId) {
       return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
     }
-    const requestItems = await listItems<{ id: string; uuid?: string; status?: string }>(requestsListId);
-    const requestRecord = requestItems.find((item) => {
+    const requestItems = await listItems<RequestStatusItem>(requestsListId);
+    const requestRecord = requestItems.find((item: RequestStatusItem) => {
       const uuid = (item.uuid ?? '').trim();
       return item.id === id || uuid === id;
     });

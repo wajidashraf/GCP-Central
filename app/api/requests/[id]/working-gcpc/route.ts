@@ -20,13 +20,15 @@ export async function POST(
       );
     }
 
+    type RequestStatusItem = { id: string; uuid?: string; status?: string };
+
     const { id } = await params;
     const requestsListId = process.env.REQUESTS_LIST_ID;
     if (!requestsListId) {
       return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
     }
-    const requestItems = await listItems<{ id: string; uuid?: string; status?: string }>(requestsListId);
-    const requestRecord = requestItems.find((item) => {
+    const requestItems = await listItems<RequestStatusItem>(requestsListId);
+    const requestRecord = requestItems.find((item: RequestStatusItem) => {
       const uuid = (item.uuid ?? '').trim();
       return item.id === id || uuid === id;
     });

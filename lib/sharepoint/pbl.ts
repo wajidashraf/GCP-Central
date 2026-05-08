@@ -310,23 +310,26 @@ export async function savePblBiddersInSharePoint(
     listCompanies(),
   ]);
 
-  const pbl = pblItems.find((item) => item.uuid === payload.requestId);
+  const pbl = pblItems.find((item: PblListItem) => item.uuid === payload.requestId);
   if (!pbl?.id) {
     throw new Error("Project details are missing. Complete Step 2 first.");
   }
 
-  const request = requests.find((item) => item.uuid === payload.requestId);
+  const request = requests.find((item: RequestsListItem) => item.uuid === payload.requestId);
   if (!request?.id) {
     throw new Error("Base request was not found. Please restart from Step 1.");
   }
 
-  const biddersToDelete = existingBidders.filter((item) => bidderLinksToPbl(item, pbl.id));
-  await Promise.all(biddersToDelete.map((item) => deleteItem(pblBiddersListId, item.id)));
+  const biddersToDelete = existingBidders.filter((item: PblBidderListItem) => bidderLinksToPbl(item, pbl.id));
+  await Promise.all(biddersToDelete.map((item: PblBidderListItem) => deleteItem(pblBiddersListId, item.id)));
+
+  type Bidder = typeof payload.bidders[number];
+  type Company = Awaited<ReturnType<typeof listCompanies>>[number];
 
   await Promise.all(
-    payload.bidders.map(async (bidder) => {
+    payload.bidders.map(async (bidder: Bidder) => {
       const company = companies.find(
-        (entry) =>
+        (entry: Company) =>
           (entry.Title ?? "").trim().toLowerCase() === bidder.companyName.trim().toLowerCase()
       );
 

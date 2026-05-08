@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const code1bExceptions = Array.isArray((body as { code1bExceptions?: unknown }).code1bExceptions)
       ? (body as { code1bExceptions: unknown[] }).code1bExceptions
           .filter((x): x is string => typeof x === "string")
-          .map((s) => s.trim())
+          .map((s: string) => s.trim())
           .filter(Boolean)
       : [];
 

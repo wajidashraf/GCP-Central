@@ -20,7 +20,7 @@ function escapeHtml(value: string) {
 }
 
 function dedupeEmails(emails: string[]) {
-  return [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(emails.map((email: string) => email.trim().toLowerCase()).filter(Boolean))];
 }
 
 function decodeHtmlEntities(value: string) {
@@ -41,11 +41,11 @@ function stripHtml(value: string) {
 
 function extractReviewerCommentList(html: string) {
   const items = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)]
-    .map((match) => stripHtml(match[1] ?? ''))
+    .map((match: RegExpMatchArray) => stripHtml(match[1] ?? ''))
     .filter(Boolean);
 
   return items.length > 0
-    ? items.map((value, index) => ({ index: index + 1, value }))
+    ? items.map((value: string, index: number) => ({ index: index + 1, value }))
     : null;
 }
 
@@ -95,41 +95,50 @@ function mapDecisionCodeToReviewConclusionFlags(decisionCode: string) {
   };
 }
 
+type RequestListItem = {
+  id: string;
+  uuid?: string;
+  requestNo?: string;
+  requestTitle?: string;
+  requestType?: string;
+  routingType?: string;
+  companyName?: string;
+  companyCode?: string;
+};
+
 async function notifyWorkingGcpcUsers(requestId: string, reviewerName: string) {
   const requestsListId = process.env.REQUESTS_LIST_ID;
   const usersListId = process.env.USERS_LIST_ID;
   if (!requestsListId || !usersListId) return;
   const [requestItems, users] = await Promise.all([
-    listItems<{
-      id: string;
-      uuid?: string;
-      requestNo?: string;
-      requestTitle?: string;
-      requestType?: string;
-      routingType?: string;
-      companyName?: string;
-      companyCode?: string;
-    }>(requestsListId),
+    listItems<RequestListItem>(requestsListId),
     listItems<{ email?: string; primaryRole?: string; roles?: string; isActive?: boolean }>(usersListId),
   ]);
-  const requestRecord = requestItems.find((item) => {
+  const requestRecord = requestItems.find((item: RequestListItem) => {
     const uuid = (item.uuid ?? '').trim();
     return item.id === requestId || uuid === requestId;
   });
 
   if (!requestRecord) return;
 
-  const workingGcpcUsers = users.filter((entry) => {
+  type UserListItem = {
+    email?: string;
+    primaryRole?: string;
+    roles?: string;
+    isActive?: boolean;
+  };
+
+  const workingGcpcUsers = users.filter((entry: UserListItem) => {
     const primaryRole = (entry.primaryRole ?? '').trim().toLowerCase();
     const rolesText = (entry.roles ?? '').trim();
     const roles = rolesText ? JSON.parse(rolesText) : [];
     const hasRole =
       primaryRole === WORKING_GCPC_SOURCE_ROLE ||
-      (Array.isArray(roles) && roles.map((role) => String(role).toLowerCase()).includes(WORKING_GCPC_SOURCE_ROLE));
+      (Array.isArray(roles) && roles.map((role: string) => String(role).toLowerCase()).includes(WORKING_GCPC_SOURCE_ROLE));
     return Boolean(entry.isActive) && hasRole;
   });
 
-  const recipients = dedupeEmails(workingGcpcUsers.map((user) => user.email));
+  const recipients = dedupeEmails(workingGcpcUsers.map((user: UserListItem) => user.email ?? ''));
   if (recipients.length === 0) return;
 
   const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
@@ -199,16 +208,18 @@ export async function POST(
       return NextResponse.json({ error: 'Decision code is required' }, { status: 400 });
     }
 
+    type RequestTypeItem = {
+      id: string;
+      uuid?: string;
+      requestType?: string;
+    };
+
     const requestsListId = process.env.REQUESTS_LIST_ID;
     if (!requestsListId) {
       return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
     }
-    const requestItems = await listItems<{
-      id: string;
-      uuid?: string;
-      requestType?: string;
-    }>(requestsListId);
-    const requestRecord = requestItems.find((item) => {
+    const requestItems = await listItems<RequestTypeItem>(requestsListId);
+    const requestRecord = requestItems.find((item: RequestTypeItem) => {
       const uuid = (item.uuid ?? '').trim();
       return item.id === id || uuid === id;
     });

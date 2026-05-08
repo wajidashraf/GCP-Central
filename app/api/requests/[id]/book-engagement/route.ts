@@ -78,6 +78,12 @@ async function sendEngagementNotifications(
       select: { name: true, email: true },
     });
 
+    type AttendeeUser = {
+      id: string;
+      name: string | null;
+      email: string | null;
+    };
+
     // slot.attendees contains user IDs — look up their actual email addresses
     const attendeeUsers = await prisma.user.findMany({
       where: { id: { in: slot.attendees } },
@@ -89,8 +95,8 @@ async function sendEngagementNotifications(
       return;
     }
 
-    const resolvedAttendeeIds = new Set(attendeeUsers.map((attendee) => attendee.id));
-    const unresolvedAttendeeIds = slot.attendees.filter((attendeeId) => !resolvedAttendeeIds.has(attendeeId));
+    const resolvedAttendeeIds = new Set(attendeeUsers.map((attendee: AttendeeUser) => attendee.id));
+    const unresolvedAttendeeIds = slot.attendees.filter((attendeeId: string) => !resolvedAttendeeIds.has(attendeeId));
     if (unresolvedAttendeeIds.length > 0) {
       console.warn('Some slot attendee IDs could not be resolved to users:', {
         slotId,

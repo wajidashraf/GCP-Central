@@ -6,6 +6,20 @@ import { hasRole } from "@/src/lib/auth/has-role";
 const ENGAGEMENT_STATUS_SCHEDULED = "scheduled";
 const ENGAGEMENT_STATUS_RESCHEDULED = "Re-Schedule";
 
+type EngagementListItem = {
+  id: string;
+  requestId: string;
+  slotId: string;
+  requestorId: string;
+  engagementNumber: string;
+  name: string;
+  type: string;
+  location: string | null;
+  notes: string | null;
+  status: string;
+  createdAt: Date;
+};
+
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -31,8 +45,25 @@ export async function GET() {
       },
     });
 
-    const requestIds = Array.from(new Set(engagements.map((item) => item.requestId).filter(Boolean)));
-    const slotIds = Array.from(new Set(engagements.map((item) => item.slotId).filter(Boolean)));
+    const requestIds = Array.from(new Set(engagements.map((item: EngagementListItem) => item.requestId).filter(Boolean)));
+    const slotIds = Array.from(new Set(engagements.map((item: EngagementListItem) => item.slotId).filter(Boolean)));
+
+    type RequestListItem = {
+      id: string;
+      requestNo: string;
+      requestTitle: string | null;
+      requestorId: string;
+      requestorName: string | null;
+      requestorEmail: string | null;
+    };
+
+    type SlotListItem = {
+      id: string;
+      slotName: string;
+      startTime: Date;
+      endTime: Date;
+      attendees: string[];
+    };
 
     const [requests, slots] = await Promise.all([
       requestIds.length > 0
@@ -62,8 +93,8 @@ export async function GET() {
         : [],
     ]);
 
-    const requestById = new Map(requests.map((item) => [item.id, item]));
-    const slotById = new Map(slots.map((item) => [item.id, item]));
+    const requestById = new Map(requests.map((item: RequestListItem) => [item.id, item]));
+    const slotById = new Map(slots.map((item: SlotListItem) => [item.id, item]));
 
     const validEngagements = engagements.filter((engagement) => {
       const hasRequest = requestById.has(engagement.requestId);
@@ -81,13 +112,19 @@ export async function GET() {
     });
 
     const requestorIds = Array.from(
-      new Set(validEngagements.map((item) => item.requestorId).filter(Boolean))
+      new Set(validEngagements.map((item: EngagementListItem) => item.requestorId).filter(Boolean))
     );
     const reviewerIds = Array.from(
       new Set(
-        validEngagements.flatMap((item) => slotById.get(item.slotId)?.attendees ?? []).filter(Boolean)
+        validEngagements.flatMap((item: EngagementListItem) => slotById.get(item.slotId)?.attendees ?? []).filter(Boolean)
       )
     );
+
+    type UserListItem = {
+      id: string;
+      name: string | null;
+      email: string | null;
+    };
 
     const [requestors, reviewers] = await Promise.all([
       requestorIds.length > 0
@@ -104,10 +141,10 @@ export async function GET() {
         : [],
     ]);
 
-    const requestorById = new Map(requestors.map((userRow) => [userRow.id, userRow]));
-    const reviewerById = new Map(reviewers.map((userRow) => [userRow.id, userRow]));
+    const requestorById = new Map(requestors.map((userRow: UserListItem) => [userRow.id, userRow]));
+    const reviewerById = new Map(reviewers.map((userRow: UserListItem) => [userRow.id, userRow]));
 
-    const payload = validEngagements.map((engagement) => {
+    const payload = validEngagements.map((engagement: EngagementListItem) => {
       const request = requestById.get(engagement.requestId)!;
       const slot = slotById.get(engagement.slotId)!;
       return {
@@ -133,7 +170,7 @@ export async function GET() {
           email: request.requestorEmail,
         },
       reviewers: slot.attendees
-        .map((reviewerId) => reviewerById.get(reviewerId))
+        .map((reviewerId: string) => reviewerById.get(reviewerId))
         .filter((reviewer): reviewer is NonNullable<typeof reviewer> => Boolean(reviewer)),
       };
     });

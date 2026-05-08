@@ -13,8 +13,10 @@ function normalizeRequestStatus(value: unknown) {
     return null;
   }
 
+  type RequestStatusItem = typeof REQUEST_STATUS[number];
+
   const normalized = value.trim().toLowerCase();
-  const matched = REQUEST_STATUS.find((status) => status.label.toLowerCase() === normalized);
+  const matched = REQUEST_STATUS.find((status: RequestStatusItem) => status.label.toLowerCase() === normalized);
   return matched?.label ?? null;
 }
 
@@ -126,20 +128,22 @@ export async function POST(
       );
     }
 
-    // Check if request exists
-    const requestsListId = process.env.REQUESTS_LIST_ID;
-    if (!requestsListId) {
-      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
-    }
-    const requestItems = await listItems<{
+    type RequestItemDetail = {
       id: string;
       uuid?: string;
       requestNo?: string;
       requestTitle?: string;
       requestorEmail?: string;
       requestorName?: string;
-    }>(requestsListId);
-    const requestRecord = requestItems.find((item) => {
+    };
+
+    // Check if request exists
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<RequestItemDetail>(requestsListId);
+    const requestRecord = requestItems.find((item: RequestItemDetail) => {
       const uuid = (item.uuid ?? '').trim();
       return item.id === id || uuid === id || (item.requestNo ?? '').trim() === id;
     });
@@ -198,19 +202,21 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const requestsListId = process.env.REQUESTS_LIST_ID;
-    if (!requestsListId) {
-      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
-    }
-    const requestItems = await listItems<{
+    type VerifierCommentItem = {
       id: string;
       uuid?: string;
       verifierCommentText?: string;
       verifierDecisionCode?: string;
       verifiedBy?: string;
       verifiedAt?: string;
-    }>(requestsListId);
-    const requestRecord = requestItems.find((item) => {
+    };
+
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<VerifierCommentItem>(requestsListId);
+    const requestRecord = requestItems.find((item: VerifierCommentItem) => {
       const uuid = (item.uuid ?? '').trim();
       return item.id === id || uuid === id;
     });

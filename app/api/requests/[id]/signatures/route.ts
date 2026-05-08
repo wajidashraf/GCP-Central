@@ -113,12 +113,14 @@ export async function POST(
         },
       });
 
+      type SignatureRow = { type: string };
+
       const sigRows = await tx.requestSignature.findMany({
         where: { requestId },
         select: { type: true },
       });
-      const preparedCount = sigRows.filter((s) => s.type.trim().toLowerCase() === PREPARED).length;
-      const confirmedCount = sigRows.filter((s) => s.type.trim().toLowerCase() === CONFIRMED).length;
+      const preparedCount = sigRows.filter((s: SignatureRow) => s.type.trim().toLowerCase() === PREPARED).length;
+      const confirmedCount = sigRows.filter((s: SignatureRow) => s.type.trim().toLowerCase() === CONFIRMED).length;
 
       if (
         preparedCount >= MIN_PREPARED_SIGS &&
