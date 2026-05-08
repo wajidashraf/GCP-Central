@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import prisma from '@/lib/prisma';
 import { JVP_FORM_CODE, JVP_REQUEST_TITLE } from '@/lib/validations/jvp';
 import { PBL_FORM_CODE, PBL_REQUEST_TITLE } from '@/lib/validations/pbl';
 import { RPP_FORM_CODE, RPP_REQUEST_TITLE } from '@/lib/validations/rpp';
@@ -14,6 +13,7 @@ import { VAP_FORM_CODE } from '@/lib/validations/vap';
 import { OTHERS_ROUTE_CODE } from '@/lib/validations/others';
 import { CI_FORM_CODE } from '@/lib/validations/ci';
 import { CPR_FORM_CODE } from '@/lib/validations/cpr';
+import { listCompanies, listItems } from '@/lib/sharepoint/lists';
 import JvpMultiStepForm from './_components/jvp-multi-step-form';
 import PblMultiStepForm from './_components/pbl-multi-step-form';
 import RppMultiStepForm from './_components/rpp-multi-step-form';
@@ -92,18 +92,49 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
       );
     }
     const canSubmitRequest = hasRole(user, 'requestor') || hasRole(user, 'admin');
+    const projectsListId = process.env.PROJECTS_LIST_ID;
+    if (!projectsListId) {
+      throw new Error('PROJECTS_LIST_ID is not set in .env.local');
+    }
 
+    const loadSharePointProjects = async () =>
+      listItems<{
+        id: string;
+        uuid?: string;
+        Title?: string;
+        projectName?: string;
+        projectCode?: string;
+        companyCode?: string;
+        companyName?: string;
+      }>(projectsListId);
+
+    const toFormProjectOption = (project: {
+      id: string;
+      uuid?: string;
+      Title?: string;
+      projectName?: string;
+      projectCode?: string;
+      companyCode?: string;
+      companyName?: string;
+    }) => ({
+      id: project.uuid ?? project.id,
+      projectName: project.projectName ?? project.Title ?? '',
+      projectCode: project.projectCode ?? '',
+      companyId: '',
+      companyCode: project.companyCode ?? '',
+      companyName: project.companyName ?? '',
+    });
+
+    const companies = await listCompanies();
     const preferredCompany = user.companyCode
-      ? await prisma.company.findUnique({
-          where: { companyCode: user.companyCode },
-        })
+      ? companies.find(
+          (company) =>
+            (company.companyCode ?? '').trim().toUpperCase() ===
+            user.companyCode!.trim().toUpperCase()
+        ) ?? null
       : null;
 
-    const fallbackCompany =
-      preferredCompany ??
-      (await prisma.company.findFirst({
-        orderBy: { companyCode: 'asc' },
-      }));
+    const fallbackCompany = preferredCompany ?? companies[0] ?? null;
 
     if (!fallbackCompany) {
       return (
@@ -143,37 +174,25 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
           />
         </div>
       );
     }
     if (isPblForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: {
-          projectName: 'asc',
-        },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
-      const companies = await prisma.company.findMany({
-        orderBy: {
-          companyName: 'asc',
-        },
-        select: {
-          id: true,
-          companyName: true,
-          companyCode: true,
-          sector: true,
-        },
-      });
+      const [projects, companies] = await Promise.all([
+        listItems<{
+          id: string;
+          uuid?: string;
+          Title?: string;
+          projectName?: string;
+          projectCode?: string;
+          companyCode?: string;
+          companyName?: string;
+        }>(projectsListId),
+        listCompanies(),
+      ]);
 
       return (
         <div className="space-y-6">
@@ -194,35 +213,28 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
             companies={companies.map((company: typeof companies[number]) => ({
-              ...company,
+              id: company.id,
+              companyName: company.Title ?? '',
               companyCode: company.companyCode ?? '',
               sector: company.sector ?? '',
             }))}
             projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
+              id: project.uuid ?? project.id,
+              projectName: project.projectName ?? project.Title ?? '',
               projectCode: project.projectCode ?? '',
+              companyId: '',
+              companyCode: project.companyCode ?? '',
+              companyName: project.companyName ?? '',
             }))}
           />
         </div>
       );
     }
     if (isRppForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: {
-          projectName: 'asc',
-        },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -243,31 +255,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
           />
         </div>
       );
     }
 
     if (isStspForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: {
-          projectName: 'asc',
-        },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -288,29 +285,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
           />
         </div>
       );
     }
 
     if (isCaaForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -331,28 +315,15 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
           />
         </div>
       );
     }
     if (isPccaForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -371,29 +342,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isRpccaForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -412,29 +370,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isPpForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -453,29 +398,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isVapForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -494,29 +426,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isOthersForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -535,29 +454,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isCiForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -576,29 +482,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
     if (isCprForm) {
-      const projects = await prisma.project.findMany({
-        orderBy: { projectName: 'asc' },
-        select: {
-          id: true,
-          projectName: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      });
+      const projects = await loadSharePointProjects();
 
       return (
         <div className="space-y-6">
@@ -617,31 +510,16 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
               email: user.email,
               companyId: fallbackCompany.id,
               companyCode: fallbackCompany.companyCode,
-              companyName: fallbackCompany.companyName,
+              companyName: fallbackCompany.Title,
             }}
-            projects={projects.map((project: typeof projects[number]) => ({
-              ...project,
-              projectCode: project.projectCode ?? '',
-            }))}
+            projects={projects.map(toFormProjectOption)}
             canSubmitRequest={canSubmitRequest}
           />
         </div>
       );
     }
 
-    const projects = await prisma.project.findMany({
-      orderBy: {
-        projectName: 'asc',
-      },
-      select: {
-        id: true,
-        projectName: true,
-        projectCode: true,
-        companyId: true,
-        companyCode: true,
-        companyName: true,
-      },
-    });
+    const projects = await loadSharePointProjects();
 
     return (
       <div className="space-y-6">
@@ -664,10 +542,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
             companyCode: fallbackCompany.companyCode,
             companyName: fallbackCompany.companyName,
           }}
-          projects={projects.map((project: typeof projects[number]) => ({
-            ...project,
-            projectCode: project.projectCode ?? '',
-          }))}
+          projects={projects.map(toFormProjectOption)}
         />
       </div>
     );

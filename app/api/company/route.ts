@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { companySchema } from "@/lib/validations/company";
 import { createCompany, findCompanyByCode, listCompanies } from "@/lib/sharepoint/lists";
+import { SHAREPOINT_LIST_FILES } from "@/lib/sharepoint/constants";
 
 type CompanyRecord = {
   companyName: string;
@@ -17,7 +18,7 @@ async function seedCompaniesToSharePointOnce() {
     return { created: 0, skipped: 0, totalInFile: 0, alreadySeeded: true };
   }
 
-  const filePath = path.join(process.cwd(), "prisma", "company-records.json");
+  const filePath = path.join(process.cwd(), "prisma", SHAREPOINT_LIST_FILES.companiesSeed);
   const raw = await readFile(filePath, "utf-8");
   const parsed = JSON.parse(raw) as unknown;
 

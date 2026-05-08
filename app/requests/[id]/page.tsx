@@ -1,7 +1,6 @@
 import Button from '@/src/components/ui/button';
 import RequestActionsSection from '@/src/components/sections/request-actions-section';
 import GeneralReviewSectionClient from '@/src/components/sections/general-review-section-client';
-import RequestSignatureSection from '@/src/components/sections/request-signature-section';
 import { DocumentCard, DocumentCards, DocumentItem } from '@/src/components/sections/document-card';
 import {
   SectionTitle,
@@ -9,15 +8,13 @@ import {
   formatDateTime,
   STATUS_BADGE_CLASS_MAP,
 } from '@/src/components/sections/request-form-shared';
-import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
-import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
-import { ensureCompleteReviewFromSignatures } from '@/src/lib/requests/ensure-complete-review-from-signatures';
 import { REGISTRATION_TYPES } from '@/src/constants/enums/procurement';
 import { PROCUREMENT_METHODS } from '@/src/constants/enums/procurement';
 import ImagePreviewTrigger from '@/src/components/sections/image-preview-trigger';
 import PrintButton from '@/src/components/ui/printButton';
+import { listItems } from '@/lib/sharepoint/lists';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,47 +22,107 @@ type RequestDetailPageProps = {
   params: Promise<{ id: string }>;
 };
 
-function verifierDecisionCodePrefill(
-  relationCode: string | null | undefined,
-  requestScalar: string | null | undefined
-): string | null {
-  const raw = (relationCode ?? requestScalar ?? '').trim();
-  return /^[1-5]$/.test(raw) ? raw : null;
-}
+type SharePointRequestItem = {
+  id: string;
+  uuid?: string;
+  requestNo?: string;
+  requestType?: string;
+  routingType?: string;
+  requestTitle?: string;
+  category?: string;
+  acknowledgement?: boolean | string | number;
+  requestorName?: string;
+  requestorEmail?: string;
+  companyCode?: string;
+  companyName?: string;
+  status?: string;
+  reviewerCommentText?: string;
+  reviewerDecisionCode?: string;
+  submittedAt?: string;
+  Created?: string;
+  Modified?: string;
+};
 
-function getRtpNumberOfDaysAfterTenderClosingDate(
-  rtp: unknown
-): number | string | null {
-  if (!rtp || typeof rtp !== 'object') {
-    return null;
-  }
+type SharePointRequestDocumentItem = {
+  id: string;
+  uuid?: string;
+  requestId?: string;
+  requestIdLookupId?: string | number;
+  requestIdId?: string | number;
+  requestIdLookup?: string | number;
+  documentUrl?: string;
+  documentFileName?: string;
+};
 
-  const value = (rtp as { numberOfDaysAfterTenderClosingDate?: unknown })
-    .numberOfDaysAfterTenderClosingDate;
+type SharePointProjectItem = {
+  id: string;
+  uuid?: string;
+  projectCode?: string;
+  projectName?: string;
+  Title?: string;
+};
 
-  return typeof value === 'number' || typeof value === 'string' ? value : null;
-}
+type SharePointRtpItem = SharePointRequestDocumentItem & {
+  projectName?: string;
+  clientName?: string;
+  registrationType?: string | number;
+  tenderClosingDate?: string;
+  numberOfDaysAfterTenderClosingDate?: string | number;
+  numberOfDaysAfterTenderClosingDa?: string | number;
+  validityPeriod?: string;
+  specialProject?: boolean | string | number;
+  projectDescription?: string;
+};
 
-function getRtpValidityPeriod(rtp: unknown): Date | null {
-  if (!rtp || typeof rtp !== 'object') {
-    return null;
-  }
+type SharePointPblItem = SharePointRequestDocumentItem & {
+  projectCode?: string;
+  projectId?: string;
+  projectIdLookupId?: string | number;
+  projectIdId?: string | number;
+  projectIdLookup?: string | number;
+  procurementMethod?: string | number;
+  justificationForLessBidders?: string;
+};
 
-  const value = (rtp as { validityPeriod?: unknown }).validityPeriod;
-  return value instanceof Date ? value : null;
-}
+type SharePointPblBidderItem = {
+  id: string;
+  pblRequestId?: string;
+  pblRequestIdLookupId?: string | number;
+  pblRequestIdId?: string | number;
+  pblRequestIdLookup?: string | number;
+  companyName?: string;
+  personInCharge?: string;
+  picContactNumber?: string;
+  sourcesFrom?: string;
+  recommendationBy?: string;
+};
 
-function getRequestReviewerComment(requestRow: unknown): string | null {
-  if (!requestRow || typeof requestRow !== 'object') return null;
-  const value = (requestRow as { reviewerCommentText?: unknown }).reviewerCommentText;
-  return typeof value === 'string' ? value : null;
-}
-
-function getRequestReviewerDecisionCode(requestRow: unknown): string | null {
-  if (!requestRow || typeof requestRow !== 'object') return null;
-  const value = (requestRow as { reviewerDecisionCode?: unknown }).reviewerDecisionCode;
-  return typeof value === 'string' ? value : null;
-}
+type SharePointJvpItem = SharePointRequestDocumentItem & {
+  projectCode?: string;
+  projectId?: string;
+  projectIdLookupId?: string | number;
+  projectIdId?: string | number;
+  projectIdLookup?: string | number;
+  teamLeader?: string;
+  financialMatters?: string;
+  technicalMatters?: string;
+  contractMatters?: string;
+  procurementMatters?: string;
+  costingAndEstimationMatters?: string;
+  implementationStage?: string;
+  backgroundOfCollabPoints?: unknown;
+  scopeOfCollabPoints?: unknown;
+  financialOverviewPoints?: unknown;
+  keyTermsPoints?: unknown;
+  proposedStructurePoints?: unknown;
+  resourcesContributionPoints?: unknown;
+  workPackagesDivisionPoints?: unknown;
+  riskReviewMitigationItems?: unknown;
+  cashflowForecastUrl?: string;
+  cashflowForecastFileName?: string;
+  costStructureUrl?: string;
+  costStructureFileName?: string;
+};
 
 function isLikelyUrl(value: string) {
   return /^https?:\/\//i.test(value.trim());
@@ -83,6 +140,98 @@ function getDisplayFileNameFromUrl(value: string) {
   } catch {
     return 'Attachment';
   }
+}
+
+function hasTokenMatch(tokens: Set<string>, ...candidates: Array<string | number | null | undefined>) {
+  for (const candidate of candidates) {
+    const normalized = String(candidate ?? '').trim();
+    if (normalized && tokens.has(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseDate(value: unknown): Date | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function getSharePointRequestDocuments(tokens: Set<string>): Promise<DocumentItem[]> {
+  const listConfigs = [
+    { label: 'RTP Document', listId: process.env.RTP_REQUESTS_LIST_ID },
+    { label: 'PBL Document', listId: process.env.PBL_REQUESTS_LIST_ID },
+    { label: 'JVP Main Document', listId: process.env.JVP_REQUESTS_LIST_ID },
+    { label: 'STSP Document', listId: process.env.STSP_REQUESTS_LIST_ID },
+    { label: 'CAA Document', listId: process.env.CAA_REQUESTS_LIST_ID },
+    { label: 'PCCA Document', listId: process.env.PCCA_REQUESTS_LIST_ID },
+    { label: 'R-PCCA Document', listId: process.env.RPCCA_REQUESTS_LIST_ID },
+    { label: 'PP Document', listId: process.env.PP_REQUESTS_LIST_ID },
+    { label: 'VAP Document', listId: process.env.VAP_REQUESTS_LIST_ID },
+    { label: 'RPP Document', listId: process.env.RPP_REQUESTS_LIST_ID },
+    { label: 'Other Document', listId: process.env.OTHERS_REQUESTS_LIST_ID },
+    { label: 'CPR Document', listId: process.env.CPR_REQUESTS_LIST_ID },
+    { label: 'CI Document', listId: process.env.CI_REQUESTS_LIST_ID },
+  ].filter(
+    (config): config is { label: string; listId: string } =>
+      typeof config.listId === 'string' && config.listId.trim().length > 0,
+  );
+
+  if (listConfigs.length === 0) {
+    return [];
+  }
+
+  const loadedLists = await Promise.all(
+    listConfigs.map(async (config) => {
+      const items = await listItems<SharePointRequestDocumentItem>(config.listId);
+      return { label: config.label, items };
+    }),
+  );
+
+  const documents: DocumentItem[] = [];
+  for (const loaded of loadedLists) {
+    const matchedItem = loaded.items.find((item) =>
+      hasTokenMatch(
+        tokens,
+        item.id,
+        item.uuid,
+        item.requestId,
+        item.requestIdLookupId,
+        item.requestIdId,
+        item.requestIdLookup,
+      ),
+    );
+
+    const url = (matchedItem?.documentUrl ?? '').trim();
+    if (!url) continue;
+
+    documents.push({
+      label: loaded.label,
+      url,
+      fileName: matchedItem?.documentFileName,
+    });
+  }
+
+  return documents;
 }
 
 function renderPointValue(point: unknown) {
@@ -113,179 +262,175 @@ function renderPointValue(point: unknown) {
 
 export default async function RequestDetailPage({ params }: RequestDetailPageProps) {
   const { id } = await params;
+  const normalizedRequestParam = id.trim();
   const currentUser = await getCurrentUser();
-
-  let request = await prisma.request.findUnique({
-    where: { id },
-    include: {
-      company: {
-        select: {
-          companyName: true,
-          companyCode: true,
-          sector: true,
-        },
-      },
-      rtp: true,
-      pbl: {
-        include: {
-          bidders: true,
-          project: {
-            select: {
-              projectName: true,
-              projectCode: true,
-            },
-          },
-        },
-      },
-      jvp: {
-        include: {
-          project: {
-            select: {
-              projectName: true,
-              projectCode: true,
-            },
-          },
-        },
-      },
-      verifierComment: true,
-      reviewerSuggestions: {
-        orderBy: { createdAt: 'desc' },
-      },
-      signatures: {
-        orderBy: { signedAt: 'desc' },
-      },
-    },
-  });
-
-  if (!request) {
+  const requestsListId = process.env.REQUESTS_LIST_ID;
+  if (!requestsListId) {
     notFound();
   }
+  const sharePointRequests = await listItems<SharePointRequestItem>(requestsListId);
+  const requestLookupTokens = new Set<string>([normalizedRequestParam]);
+  const sharePointRequest = sharePointRequests.find((item) =>
+    hasTokenMatch(requestLookupTokens, item.id, item.uuid, item.requestNo),
+  );
 
-  const promotedToCompleteReview = await ensureCompleteReviewFromSignatures(request.id, request.status);
-  if (promotedToCompleteReview) {
-    request = {
-      ...request,
-      status: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
-    };
+  if (!sharePointRequest) {
+    notFound();
   }
+  requestLookupTokens.add(sharePointRequest.id);
+  if ((sharePointRequest.uuid ?? '').trim()) requestLookupTokens.add((sharePointRequest.uuid ?? '').trim());
+  if ((sharePointRequest.requestNo ?? '').trim()) requestLookupTokens.add((sharePointRequest.requestNo ?? '').trim());
+
+  const [projects, rtpItems, pblItems, jvpItems, pblBidderItems] = await Promise.all([
+    process.env.PROJECTS_LIST_ID ? listItems<SharePointProjectItem>(process.env.PROJECTS_LIST_ID) : Promise.resolve([]),
+    process.env.RTP_REQUESTS_LIST_ID ? listItems<SharePointRtpItem>(process.env.RTP_REQUESTS_LIST_ID) : Promise.resolve([]),
+    process.env.PBL_REQUESTS_LIST_ID ? listItems<SharePointPblItem>(process.env.PBL_REQUESTS_LIST_ID) : Promise.resolve([]),
+    process.env.JVP_REQUESTS_LIST_ID ? listItems<SharePointJvpItem>(process.env.JVP_REQUESTS_LIST_ID) : Promise.resolve([]),
+    process.env.PBL_BIDDERS_LIST_ID ? listItems<SharePointPblBidderItem>(process.env.PBL_BIDDERS_LIST_ID) : Promise.resolve([]),
+  ]);
+
+  const request = {
+    id: (sharePointRequest.uuid ?? '').trim() || sharePointRequest.id,
+    requestNo: (sharePointRequest.requestNo ?? '').trim(),
+    requestType: (sharePointRequest.requestType ?? '').trim(),
+    routingType: (sharePointRequest.routingType ?? '').trim(),
+    requestTitle: (sharePointRequest.requestTitle ?? '').trim(),
+    category: (sharePointRequest.category ?? '').trim(),
+    acknowledgement: parseBoolean(sharePointRequest.acknowledgement),
+    requestorName: (sharePointRequest.requestorName ?? '').trim(),
+    requestorEmail: (sharePointRequest.requestorEmail ?? '').trim(),
+    companyCode: (sharePointRequest.companyCode ?? '').trim(),
+    companyName: (sharePointRequest.companyName ?? '').trim(),
+    status: (sharePointRequest.status ?? '').trim(),
+    submittedAt: parseDate(sharePointRequest.submittedAt),
+    createdAt: parseDate(sharePointRequest.Created),
+    updatedAt: parseDate(sharePointRequest.Modified),
+    reviewerCommentText: (sharePointRequest.reviewerCommentText ?? '').trim(),
+    reviewerDecisionCode: (sharePointRequest.reviewerDecisionCode ?? '').trim(),
+  };
+
+  const rtp = rtpItems.find((item) =>
+    hasTokenMatch(
+      requestLookupTokens,
+      item.id,
+      item.uuid,
+      item.requestId,
+      item.requestIdLookupId,
+      item.requestIdId,
+      item.requestIdLookup,
+    ),
+  );
+  const pbl = pblItems.find((item) =>
+    hasTokenMatch(
+      requestLookupTokens,
+      item.id,
+      item.uuid,
+      item.requestId,
+      item.requestIdLookupId,
+      item.requestIdId,
+      item.requestIdLookup,
+    ),
+  );
+  const jvp = jvpItems.find((item) =>
+    hasTokenMatch(
+      requestLookupTokens,
+      item.id,
+      item.uuid,
+      item.requestId,
+      item.requestIdLookupId,
+      item.requestIdId,
+      item.requestIdLookup,
+    ),
+  );
+
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const projectByUuid = new Map(
+    projects
+      .filter((project) => (project.uuid ?? '').trim())
+      .map((project) => [(project.uuid ?? '').trim(), project]),
+  );
+  const resolveProject = (projectId?: string | number) => {
+    const normalized = String(projectId ?? '').trim();
+    return projectById.get(normalized) ?? projectByUuid.get(normalized) ?? null;
+  };
+  const pblProject = resolveProject(
+    pbl?.projectIdLookupId ?? pbl?.projectIdId ?? pbl?.projectIdLookup ?? pbl?.projectId,
+  );
+  const jvpProject = resolveProject(
+    jvp?.projectIdLookupId ?? jvp?.projectIdId ?? jvp?.projectIdLookup ?? jvp?.projectId,
+  );
 
   // ── Build documents list ──────────────────────────────────────────────────
-  const documents: DocumentItem[] = [];
+  const documents: DocumentItem[] = await getSharePointRequestDocuments(requestLookupTokens);
 
-  if (request.rtp?.documentUrl) {
+  if (!documents.some((item) => item.label === 'RTP Document') && (rtp?.documentUrl ?? '').trim()) {
     documents.push({
       label: 'RTP Document',
-      url: request.rtp.documentUrl,
-      fileName: request.rtp.documentFileName,
+      url: String(rtp?.documentUrl),
+      fileName: rtp?.documentFileName,
     });
   }
-  if (request.pbl?.documentUrl) {
+  if (!documents.some((item) => item.label === 'PBL Document') && (pbl?.documentUrl ?? '').trim()) {
     documents.push({
       label: 'PBL Document',
-      url: request.pbl.documentUrl,
-      fileName: request.pbl.documentFileName,
+      url: String(pbl?.documentUrl),
+      fileName: pbl?.documentFileName,
     });
   }
-  if (request.jvp?.documentUrl) {
+  if (!documents.some((item) => item.label === 'JVP Main Document') && (jvp?.documentUrl ?? '').trim()) {
     documents.push({
       label: 'JVP Main Document',
-      url: request.jvp.documentUrl,
-      fileName: request.jvp.documentFileName,
+      url: String(jvp?.documentUrl),
+      fileName: jvp?.documentFileName,
     });
   }
-  // JVP cashflow and cost structure are field-level attachments and rendered in JVP detail section.
-
-  // ── Serialise dates for client components ─────────────────────────────────
-  const verifierCommentData = request.verifierComment
-    ? { ...request.verifierComment, createdAt: request.verifierComment.createdAt.toISOString() }
-    : null;
-
-  const reviewerSuggestionsData = request.reviewerSuggestions.map(
-    (s: typeof request.reviewerSuggestions[number]) => ({
-      ...s,
-      createdAt: s.createdAt.toISOString(),
-    }),
-  );
 
   const currentUserRoles = new Set(
     [currentUser?.role, ...(currentUser?.roles ?? [])]
       .filter(Boolean)
       .map((role) => String(role).toLowerCase()),
   );
-  const hasCurrentUserRole = (role: string) => currentUserRoles.has(role);
-  const isReviewerSuggestion = (sourceRole?: string | null) => !sourceRole || sourceRole === 'reviewer';
-  const isWorkingGcpcSuggestion = (sourceRole?: string | null) => sourceRole === 'working_gcpc';
-  const reviewerSuggestions = reviewerSuggestionsData.filter((suggestion) =>
-    isReviewerSuggestion(suggestion.sourceRole),
-  );
-  const workingGcpcSuggestions = reviewerSuggestionsData.filter((suggestion) =>
-    isWorkingGcpcSuggestion(suggestion.sourceRole),
-  );
-  const canSeeReviewerSuggestions =
-    hasCurrentUserRole('reviewer') || hasCurrentUserRole('verifier') || hasCurrentUserRole('admin');
-  const canSeeWorkingGcpcSuggestions =
-    hasCurrentUserRole('working_gcpc') || hasCurrentUserRole('verifier');
-  const isRtpRequest = request.requestType.trim().toLowerCase() === 'rtp';
-  const normalizedRequestStatus = request.status.trim().toLowerCase();
-  const signatureHiddenStatuses = new Set(
-    [
-      REQUEST_STATUS_MAP.FR.label,
-      REQUEST_STATUS_MAP.NEW.label,
-      REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label,
-      REQUEST_STATUS_MAP.R.label,
-      REQUEST_STATUS_MAP.DRAFT_REVIEW.label,
-      REQUEST_STATUS_MAP.RS.label,
-    ].map((statusLabel) => statusLabel.toLowerCase()),
-  );
-  const shouldShowSignatureSection =
-    !isRtpRequest && !signatureHiddenStatuses.has(normalizedRequestStatus);
-
-  const signatoryMembers = await prisma.signatoryMember.findMany({
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-  });
-
-  const toSignatoryRow = (m: (typeof signatoryMembers)[number]) => ({
-    id: m.id,
-    name: m.name,
-    email: m.email,
-    group: m.group as 'prepared' | 'confirmed',
-    sortOrder: m.sortOrder,
-  });
-
-  const preparedMembers = signatoryMembers.filter((m) => m.group === 'prepared').map(toSignatoryRow);
-  const confirmedMembers = signatoryMembers.filter((m) => m.group === 'confirmed').map(toSignatoryRow);
+  const reviewerSuggestions: Array<{
+    id: string;
+    suggestion: string;
+    sourceRole?: string | null;
+    createdAt: string;
+  }> = [];
+  const workingGcpcSuggestions: Array<{
+    id: string;
+    suggestion: string;
+    sourceRole?: string | null;
+    createdAt: string;
+  }> = [];
+  const verifierCommentData = null;
+  const requestIdForActions = (sharePointRequest.uuid ?? '').trim() || sharePointRequest.id;
 
   const registrationTypeLabel =
-    request.rtp ? REGISTRATION_TYPES.find(
-      (item) => item.value === request.rtp?.registrationType
-    )?.label : '—';
+    rtp
+      ? REGISTRATION_TYPES.find((item) => item.value === Number(rtp.registrationType))?.label ?? '—'
+      : '—';
 
   const procurementMethodLabel =
-    request.pbl ? PROCUREMENT_METHODS.find(
-      (item) => item.value === request.pbl?.procurementMethod
-    )?.label : '—';
-  // Guard access to newly added RTP fields when generated Prisma types are stale in IDE.
-  const rtpNumberOfDaysAfterTenderClosingDate = getRtpNumberOfDaysAfterTenderClosingDate(
-    request.rtp
-  );
-  const rtpValidityPeriod = getRtpValidityPeriod(request.rtp);
-
-  const signaturesData = request.signatures.map((s) => ({
-    id: s.id,
-    signatoryMemberId: s.signatoryMemberId,
-    signatoryName: s.signatoryName,
-    signatoryEmail: s.signatoryEmail,
-    type: s.type,
-    signUrl: s.signUrl,
-    signedAt: s.signedAt.toISOString(),
-  }));
-
-  const addDecisionInitialComment = getRequestReviewerComment(request) ?? null;
-  const reviewerDecisionCode = getRequestReviewerDecisionCode(request);
-  const addDecisionInitialCode = verifierDecisionCodePrefill(
-    reviewerDecisionCode,
-    null
-  );
+    pbl
+      ? PROCUREMENT_METHODS.find((item) => item.value === Number(pbl.procurementMethod))?.label ??
+        String(pbl.procurementMethod ?? '—')
+      : '—';
+  const rtpNumberOfDaysAfterTenderClosingDate =
+    rtp?.numberOfDaysAfterTenderClosingDate ?? rtp?.numberOfDaysAfterTenderClosingDa ?? null;
+  const rtpValidityPeriod = parseDate(rtp?.validityPeriod);
+  const pblBidders = pbl
+    ? pblBidderItems.filter((bidder) =>
+        hasTokenMatch(
+          new Set([pbl.id]),
+          bidder.pblRequestId,
+          bidder.pblRequestIdLookupId,
+          bidder.pblRequestIdId,
+          bidder.pblRequestIdLookup,
+        ),
+      )
+    : [];
+  const addDecisionInitialComment = request.reviewerCommentText || null;
+  const reviewerDecisionCode = request.reviewerDecisionCode || null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -355,56 +500,56 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
           {/* ── RTP Details ── */}
 
-          {request.rtp ? (
+          {rtp ? (
             <div>
               <SectionTitle title="RTP Details" />
               <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <DetailItem label="Client Name" value={request.rtp.clientName} />
+                <DetailItem label="Client Name" value={rtp.clientName ?? '—'} />
                 <DetailItem label="Registration Type" value={registrationTypeLabel} />
-                <DetailItem label="Project Name" value={request.rtp.projectName} />
-                <DetailItem label="Tender Closing Date" value={formatDateTime(request.rtp.tenderClosingDate)} />
+                <DetailItem label="Project Name" value={rtp.projectName ?? '—'} />
+                <DetailItem label="Tender Closing Date" value={formatDateTime(parseDate(rtp.tenderClosingDate))} />
                 <DetailItem
                   label="No. of Days"
                   value={rtpNumberOfDaysAfterTenderClosingDate ?? '—'}
                 />
                 <DetailItem label="Validity Period" value={formatDateTime(rtpValidityPeriod)} />
-                <DetailItem label="Special Project" value={request.rtp.specialProject ? 'Yes' : 'No'} />
+                <DetailItem label="Special Project" value={parseBoolean(rtp.specialProject) ? 'Yes' : 'No'} />
               </dl>
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Project Description
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
-                  {request.rtp.projectDescription}
+                  {rtp.projectDescription ?? '—'}
                 </p>
               </div>
             </div>
           ) : null}
 
           {/* ── PBL Details ── */}
-          {request.pbl ? (
+          {pbl ? (
             <div>
               <SectionTitle title="PBL Details" />
               <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <DetailItem
                   label="Project"
                   value={
-                    request.pbl.project.projectCode
-                      ? `${request.pbl.project.projectName}`
-                      : request.pbl.project.projectName
+                    pblProject?.projectCode
+                      ? `${pblProject.projectName ?? pblProject.Title ?? '—'}`
+                      : pblProject?.projectName ?? pblProject?.Title ?? '—'
                   }
                 />
-                <DetailItem label="Project Code" value={request.pbl.projectCode || '—'} />
+                <DetailItem label="Project Code" value={pbl.projectCode || pblProject?.projectCode || '—'} />
                 <DetailItem label="Procurement Method" value={procurementMethodLabel} />
               </dl>
-              {request.pbl?.justificationForLessBidders && (
+              {pbl.justificationForLessBidders && (
                 <div className="mt-3 rounded-lg border border-[var(--border)] bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Justification For Less Bidders
                   </p>
 
                   <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text)]">
-                    {request.pbl.justificationForLessBidders}
+                    {pbl.justificationForLessBidders}
                   </p>
                 </div>
               )}
@@ -412,7 +557,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Bidders
                 </h3>
-                {request.pbl.bidders.length > 0 ? (
+                {pblBidders.length > 0 ? (
                   <div className="table-shell">
                     <table>
                       <thead>
@@ -425,13 +570,13 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                         </tr>
                       </thead>
                       <tbody>
-                        {request.pbl.bidders.map((bidder: typeof request.pbl.bidders[number]) => (
+                        {pblBidders.map((bidder) => (
                           <tr key={bidder.id}>
-                            <td>{bidder.companyName}</td>
-                            <td>{bidder.personInCharge}</td>
-                            <td>{bidder.picContactNumber}</td>
-                            <td>{bidder.sourcesFrom}</td>
-                            <td>{bidder.recommendationBy}</td>
+                            <td>{bidder.companyName ?? '—'}</td>
+                            <td>{bidder.personInCharge ?? '—'}</td>
+                            <td>{bidder.picContactNumber ?? '—'}</td>
+                            <td>{bidder.sourcesFrom ?? '—'}</td>
+                            <td>{bidder.recommendationBy ?? '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -445,26 +590,26 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           ) : null}
 
           {/* ── JVP Details ── */}
-          {request.jvp ? (
+          {jvp ? (
             <div>
               <SectionTitle title="JVP Details" />
               <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <DetailItem
                   label="Project"
                   value={
-                    request.jvp.project.projectCode
-                      ? `${request.jvp.project.projectName} (${request.jvp.project.projectCode})`
-                      : request.jvp.project.projectName
+                    jvpProject?.projectCode
+                      ? `${jvpProject.projectName ?? jvpProject.Title ?? '—'} (${jvpProject.projectCode})`
+                      : jvpProject?.projectName ?? jvpProject?.Title ?? '—'
                   }
                 />
-                <DetailItem label="Project Code" value={request.jvp.projectCode || '—'} />
-                <DetailItem label="Team Leader" value={request.jvp.teamLeader || '—'} />
-                <DetailItem label="Financial Matters PIC" value={request.jvp.financialMatters || '—'} />
-                <DetailItem label="Technical Matters PIC" value={request.jvp.technicalMatters || '—'} />
-                <DetailItem label="Contract Matters PIC" value={request.jvp.contractMatters || '—'} />
-                <DetailItem label="Procurement Matters PIC" value={request.jvp.procurementMatters || '—'} />
-                <DetailItem label="Costing & Estimation PIC" value={request.jvp.costingAndEstimationMatters || '—'} />
-                <DetailItem label="Implementation Stage" value={request.jvp.implementationStage || '—'} />
+                <DetailItem label="Project Code" value={jvp.projectCode || jvpProject?.projectCode || '—'} />
+                <DetailItem label="Team Leader" value={jvp.teamLeader || '—'} />
+                <DetailItem label="Financial Matters PIC" value={jvp.financialMatters || '—'} />
+                <DetailItem label="Technical Matters PIC" value={jvp.technicalMatters || '—'} />
+                <DetailItem label="Contract Matters PIC" value={jvp.contractMatters || '—'} />
+                <DetailItem label="Procurement Matters PIC" value={jvp.procurementMatters || '—'} />
+                <DetailItem label="Costing & Estimation PIC" value={jvp.costingAndEstimationMatters || '—'} />
+                <DetailItem label="Implementation Stage" value={jvp.implementationStage || '—'} />
               </dl>
               <div className="mt-3 space-y-3 ">
                 <div className="rounded-lg border border-[var(--border)] bg-white p-3">
@@ -472,8 +617,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                     Background of Collaboration
                   </p>
 
-                  {Array.isArray(request.jvp?.backgroundOfCollabPoints) &&
-                    request.jvp.backgroundOfCollabPoints.map((point, index) => (
+                  {parseJsonArray(jvp.backgroundOfCollabPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -484,8 +628,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Scope of Collaboration
                   </p>
-                  {Array.isArray(request.jvp?.scopeOfCollabPoints) &&
-                    request.jvp.scopeOfCollabPoints.map((point, index) => (
+                  {parseJsonArray(jvp.scopeOfCollabPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -496,8 +639,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Financial Overview
                   </p>
-                  {Array.isArray(request.jvp?.financialOverviewPoints) &&
-                    request.jvp?.financialOverviewPoints.map((point, index) => (
+                  {parseJsonArray(jvp.financialOverviewPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -508,8 +650,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Key Terms
                   </p>
-                  {Array.isArray(request.jvp?.keyTermsPoints) &&
-                    request.jvp.keyTermsPoints.map((point, index) => (
+                  {parseJsonArray(jvp.keyTermsPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -520,8 +661,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Proposed Structure
                   </p>
-                  {Array.isArray(request.jvp?.proposedStructurePoints) &&
-                    request.jvp.proposedStructurePoints.map((point, index) => (
+                  {parseJsonArray(jvp.proposedStructurePoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -532,8 +672,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Resources Contribution
                   </p>
-                  {Array.isArray(request.jvp?.resourcesContributionPoints) &&
-                    request.jvp.resourcesContributionPoints.map((point, index) => (
+                  {parseJsonArray(jvp.resourcesContributionPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {renderPointValue(point)}
                       </li>
@@ -544,21 +683,21 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Cashflow Forecast
                   </p>
-                  {request.jvp.cashflowForecastUrl ? (
+                  {jvp.cashflowForecastUrl ? (
                     <div className="mt-2 space-y-2">
-                      {isLikelyImageUrl(request.jvp.cashflowForecastUrl) ? (
+                      {isLikelyImageUrl(jvp.cashflowForecastUrl) ? (
                         <ImagePreviewTrigger
-                          imageUrl={request.jvp.cashflowForecastUrl}
-                          alt={request.jvp.cashflowForecastFileName ?? 'Cashflow forecast preview'}
+                          imageUrl={jvp.cashflowForecastUrl}
+                          alt={jvp.cashflowForecastFileName ?? 'Cashflow forecast preview'}
                         />
                       ) : (
                         <DocumentCard
                           doc={{
                             label: 'Cashflow file',
-                            url: request.jvp.cashflowForecastUrl,
+                            url: jvp.cashflowForecastUrl,
                             fileName:
-                              request.jvp.cashflowForecastFileName ??
-                              getDisplayFileNameFromUrl(request.jvp.cashflowForecastUrl),
+                              jvp.cashflowForecastFileName ??
+                              getDisplayFileNameFromUrl(jvp.cashflowForecastUrl),
                           }}
                         />
                       )}
@@ -571,21 +710,21 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Cost Structure
                   </p>
-                  {request.jvp.costStructureUrl ? (
+                  {jvp.costStructureUrl ? (
                     <div className="mt-2 space-y-2">
-                      {isLikelyImageUrl(request.jvp.costStructureUrl) ? (
+                      {isLikelyImageUrl(jvp.costStructureUrl) ? (
                         <ImagePreviewTrigger
-                          imageUrl={request.jvp.costStructureUrl}
-                          alt={request.jvp.costStructureFileName ?? 'Cost structure preview'}
+                          imageUrl={jvp.costStructureUrl}
+                          alt={jvp.costStructureFileName ?? 'Cost structure preview'}
                         />
                       ) : (
                         <DocumentCard
                           doc={{
                             label: 'Cost structure file',
-                            url: request.jvp.costStructureUrl,
+                            url: jvp.costStructureUrl,
                             fileName:
-                              request.jvp.costStructureFileName ??
-                              getDisplayFileNameFromUrl(request.jvp.costStructureUrl),
+                              jvp.costStructureFileName ??
+                              getDisplayFileNameFromUrl(jvp.costStructureUrl),
                           }}
                         />
                       )}
@@ -598,8 +737,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
                     Work Packages Division
                   </p>
-                  {Array.isArray(request.jvp?.workPackagesDivisionPoints) &&
-                    request.jvp.workPackagesDivisionPoints.map((point, index) => (
+                  {parseJsonArray(jvp.workPackagesDivisionPoints).map((point, index) => (
                       <li key={index} className="ms-8">
                         {typeof point === 'string' ? point : JSON.stringify(point)}
                       </li>
@@ -610,8 +748,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] mb-2">
                     Risk Review & Mitigation
                   </p>
-                  {Array.isArray(request.jvp?.riskReviewMitigationItems) &&
-                    request.jvp.riskReviewMitigationItems.length > 0 ? (
+                  {parseJsonArray(jvp.riskReviewMitigationItems).length > 0 ? (
                     <table className="w-full text-sm border-collapse border border-gray-200">
                       <thead className="bg-gray-100">
                         <tr>
@@ -624,7 +761,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
                         </tr>
                       </thead>
                       <tbody>
-                        {request.jvp.riskReviewMitigationItems.map((item, index) => (
+                        {parseJsonArray(jvp.riskReviewMitigationItems).map((item, index) => (
                           <tr
                             key={index}
                           >
@@ -655,26 +792,13 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             <GeneralReviewSectionClient
               verifierComment={verifierCommentData}
               reviewerDecisionCode={reviewerDecisionCode}
-              reviewerSuggestions={canSeeReviewerSuggestions ? reviewerSuggestions : []}
-              workingGcpcSuggestions={canSeeWorkingGcpcSuggestions ? workingGcpcSuggestions : []}
+              reviewerSuggestions={currentUserRoles.has('reviewer') || currentUserRoles.has('verifier') || currentUserRoles.has('admin') ? reviewerSuggestions : []}
+              workingGcpcSuggestions={currentUserRoles.has('working_gcpc') || currentUserRoles.has('verifier') ? workingGcpcSuggestions : []}
               userRole={currentUser?.role}
               userRoles={currentUser?.roles}
               status={request.status}
             />
             : null}
-
-          {shouldShowSignatureSection ? (
-            <RequestSignatureSection
-              requestId={request.id}
-              status={request.status}
-              preparedMembers={preparedMembers}
-              confirmedMembers={confirmedMembers}
-              signatures={signaturesData}
-              currentUser={
-                currentUser ? { name: currentUser.name, email: currentUser.email } : null
-              }
-            />
-          ) : null}
 
         </div>
       </section>
@@ -682,16 +806,16 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       {/* ── Actions section ── */}
       <section className="space-y-4">
         <RequestActionsSection
-          requestId={request.id}
+          requestId={requestIdForActions}
           status={request.status}
           requestType={request.requestType}
-          isSpecialProject={Boolean(request.rtp?.specialProject)}
+          isSpecialProject={parseBoolean(rtp?.specialProject)}
           reviewerSuggestionsCount={reviewerSuggestions.length}
           workingGcpcSuggestionsCount={workingGcpcSuggestions.length}
           userRole={currentUser?.role}
           userRoles={currentUser?.roles}
           initialReviewerComment={addDecisionInitialComment}
-          initialReviewerDecisionCode={addDecisionInitialCode}
+          initialReviewerDecisionCode={reviewerDecisionCode}
         />
       </section>
 

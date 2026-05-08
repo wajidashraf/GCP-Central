@@ -449,6 +449,10 @@ export default function JvpMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", folder);
+      formData.set("requestType", JVP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
 
       const response = await fetch("/api/uploads/cloudinary", {
         method: "POST",

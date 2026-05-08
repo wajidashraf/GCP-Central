@@ -142,6 +142,10 @@ export default function OthersMultiStepForm({ channel, requestor, projects, canS
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/others");
+      formData.set("requestType", "OTHERS");
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

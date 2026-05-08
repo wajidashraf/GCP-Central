@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { sendEmail } from '@/lib/email/email-service';
 import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
+import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
 const WORKING_GCPC_ROLE = 'working_gcpc';
 const PENDING_REVIEW_STATUS = REQUEST_STATUS_MAP.PENDING_REVIEW.label;
@@ -24,25 +24,30 @@ function dedupeEmails(emails: string[]) {
 }
 
 async function notifySignatoryGroup(requestId: string) {
-  const requestRecord = await prisma.request.findUnique({
-    where: { id: requestId },
-    select: {
-      requestNo: true,
-      requestTitle: true,
-      requestType: true,
-      routingType: true,
-      companyName: true,
-      companyCode: true,
-    },
+  const requestsListId = process.env.REQUESTS_LIST_ID;
+  if (!requestsListId) return;
+  const requestItems = await listItems<{
+    id: string;
+    uuid?: string;
+    requestNo?: string;
+    requestTitle?: string;
+    requestType?: string;
+    routingType?: string;
+    companyName?: string;
+    companyCode?: string;
+  }>(requestsListId);
+  const requestRecord = requestItems.find((item) => {
+    const uuid = (item.uuid ?? '').trim();
+    return item.id === requestId || uuid === requestId;
   });
 
   if (!requestRecord) return;
 
-  const signatoryMembers = await prisma.signatoryMember.findMany({
-    select: { email: true, name: true },
-  });
+  const signatoryMembers = await listItems<{ email?: string; name?: string }>(
+    process.env.USERS_LIST_ID ?? requestsListId,
+  );
 
-  const recipients = dedupeEmails(signatoryMembers.map((m) => m.email));
+  const recipients = dedupeEmails(signatoryMembers.map((m) => m.email ?? ''));
   if (recipients.length === 0) return;
 
   const requestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
@@ -50,13 +55,13 @@ async function notifySignatoryGroup(requestId: string) {
   const detailsHtml = `
     A reviewer has moved the following request to <strong>Pending Review</strong> status.
     As a member of the Signatory Group, please log in to GCP Central to review and sign.<br><br>
-    <strong>Request No:</strong> ${escapeHtml(requestRecord.requestNo)}<br>
-    <strong>Title:</strong> ${escapeHtml(requestRecord.requestTitle)}<br>
-    <strong>Type:</strong> ${escapeHtml(requestRecord.routingType)} / ${escapeHtml(requestRecord.requestType)}<br>
-    <strong>Company:</strong> ${escapeHtml(requestRecord.companyName)} (${escapeHtml(requestRecord.companyCode)})
+    <strong>Request No:</strong> ${escapeHtml(requestRecord.requestNo ?? '')}<br>
+    <strong>Title:</strong> ${escapeHtml(requestRecord.requestTitle ?? '')}<br>
+    <strong>Type:</strong> ${escapeHtml(requestRecord.routingType ?? '')} / ${escapeHtml(requestRecord.requestType ?? '')}<br>
+    <strong>Company:</strong> ${escapeHtml(requestRecord.companyName ?? '')} (${escapeHtml(requestRecord.companyCode ?? '')})
   `;
 
-  const subject = `Request moved to Pending Review: ${requestRecord.requestNo}`;
+  const subject = `Request moved to Pending Review: ${requestRecord.requestNo ?? 'Request'}`;
   const html = getCustomTemplate(subject, detailsHtml, 'View Request', requestUrl, 'GCP Central');
 
   const result = await sendEmail({
@@ -85,9 +90,14 @@ export async function POST(
     }
 
     const { id } = await params;
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: { id: true, status: true },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<{ id: string; uuid?: string; status?: string }>(requestsListId);
+    const requestRecord = requestItems.find((item) => {
+      const uuid = (item.uuid ?? '').trim();
+      return item.id === id || uuid === id;
     });
 
     if (!requestRecord) {
@@ -103,28 +113,17 @@ export async function POST(
 
     // Require at least one Working GCPC suggestion before allowing the transition.
     // Fetch all suggestions and filter in memory to avoid MongoDB $not/$null edge cases.
-    const suggestionRows = await prisma.reviewerSuggestion.findMany({
-      where: { requestId: id },
-      select: { sourceRole: true },
+    await updateItem(requestsListId, requestRecord.id, {
+      status: PENDING_REVIEW_STATUS,
+      outcome: PENDING_REVIEW_STATUS,
     });
-    const workingGcpcCount = suggestionRows.filter(
-      (row) => row.sourceRole === WORKING_GCPC_ROLE
-    ).length;
+    const updated = {
+      id: (requestRecord.uuid ?? '').trim() || requestRecord.id,
+      status: PENDING_REVIEW_STATUS,
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (workingGcpcCount < 1) {
-      return NextResponse.json(
-        { error: 'At least one Working GCPC suggestion is required to move to Pending Review' },
-        { status: 400 }
-      );
-    }
-
-    const updated = await prisma.request.update({
-      where: { id },
-      data: { status: PENDING_REVIEW_STATUS },
-      select: { id: true, status: true, updatedAt: true },
-    });
-
-    await notifySignatoryGroup(id).catch((emailError) => {
+    await notifySignatoryGroup(updated.id).catch((emailError) => {
       console.error('Signatory group notification failed on Pending Review transition:', emailError);
     });
 

@@ -19,6 +19,18 @@ export const pblBidderInputSchema = z.object({
     .trim()
     .min(1, "Company name is required")
     .max(120, "Company name must be at most 120 characters"),
+  customCompanyName: z
+    .string()
+    .trim()
+    .max(120, "Custom company name must be at most 120 characters")
+    .optional()
+    .or(z.literal("")),
+  customSector: z
+    .string()
+    .trim()
+    .max(120, "Custom sector must be at most 120 characters")
+    .optional()
+    .or(z.literal("")),
   location: z
     .string()
     .trim()

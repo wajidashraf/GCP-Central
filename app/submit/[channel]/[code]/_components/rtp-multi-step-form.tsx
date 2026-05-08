@@ -360,6 +360,10 @@ export default function RtpMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/rtp");
+      formData.set("requestType", RTP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
 
       const response = await fetch("/api/uploads/cloudinary", {
         method: "POST",

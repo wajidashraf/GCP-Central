@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { buildNextProjectCode } from "@/lib/project-code";
-import prisma from "@/lib/prisma";
-import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
-import { buildNextRequestNo } from "@/lib/request-no";
+import {
+  createRtpBaseRequestInSharePoint,
+  saveRtpDetailsInSharePoint,
+  submitRtpRequestInSharePoint,
+} from "@/lib/sharepoint/rtp";
 import {
   createRtpBaseRequestSchema,
   saveRtpDetailsSchema,
@@ -64,59 +65,22 @@ export async function createRtpBaseRequest(
   }
 
   const payload = validatedInput.data;
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      const requestNo = await buildNextRequestNo();
-      const request = await prisma.request.create({
-        data: {
-          requestNo,
-          requestType: payload.requestType,
-          routingType: payload.routingType,
-          requestTitle: payload.requestTitle,
-          category: payload.category,
-          requestorId: payload.requestorId,
-          requestorName: payload.requestorName,
-          requestorEmail: payload.requestorEmail,
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          status: "Draft",
-          acknowledgement: false,
-        },
-      });
-
-      revalidatePath("/requests");
-
-      return {
-        success: true,
-        data: {
-          requestId: request.id,
-          requestNo: request.requestNo,
-        },
-      };
-    } catch (error) {
-      const isRequestNoConflict =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code?: string }).code === "P2002";
-
-      if (isRequestNoConflict) {
-        continue;
-      }
-
-      return {
-        success: false,
-        message: "Failed to create RTP base request.",
-      };
-    }
+  try {
+    const created = await createRtpBaseRequestInSharePoint(payload);
+    revalidatePath("/requests");
+    return {
+      success: true,
+      data: {
+        requestId: created.requestId,
+        requestNo: created.requestNo,
+      },
+    };
+  } catch {
+    return {
+      success: false,
+      message: "Failed to create RTP base request.",
+    };
   }
-
-  return {
-    success: false,
-    message: "Unable to generate a unique request number. Please try again.",
-  };
 }
 
 export async function saveRtpDetails(
@@ -134,36 +98,6 @@ export async function saveRtpDetails(
   const payload = validatedInput.data;
 
   try {
-    const request = await prisma.request.findUnique({
-      where: { id: payload.requestId },
-      select: {
-        id: true,
-        routingType: true,
-        requestType: true,
-        companyId: true,
-        companyCode: true,
-        companyName: true,
-      },
-    });
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Base request was not found. Please restart from Step 1.",
-      };
-    }
-
-    if (
-      request.companyId !== payload.companyId ||
-      request.companyCode !== payload.companyCode ||
-      request.companyName !== payload.companyName
-    ) {
-      return {
-        success: false,
-        message: "Company information does not match the base request.",
-      };
-    }
-
     const tenderClosingDate = parseDateInput(payload.tenderClosingDate);
     if (payload.tenderClosingDate && !tenderClosingDate) {
       return {
@@ -200,85 +134,23 @@ export async function saveRtpDetails(
       };
     }
 
-    const existingRtp = await prisma.rtpRequest.findUnique({
-      where: { requestId: payload.requestId },
-      select: { projectId: true },
-    });
-
-    let projectId = existingRtp?.projectId ?? null;
-
-    if (projectId) {
-      await prisma.project.update({
-        where: { id: projectId },
-        data: {
-          projectName: payload.projectName,
-          projectStatus: "Inactive",
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-        },
-      });
-    } else {
-      const projectCode = await buildNextProjectCode();
-      const project = await prisma.project.create({
-        data: {
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          projectStatus: "Inactive",
-          projectName: payload.projectName,
-          projectCode,
-          createdFromRequestId: payload.requestId,
-        },
-      });
-      projectId = project.id;
-    }
-
-    await prisma.rtpRequest.upsert({
-      where: { requestId: payload.requestId },
-      create: {
-        requestId: payload.requestId,
-        clientName: payload.clientName,
-        registrationType: payload.registrationType,
-        tenderClosingDate,
-        numberOfDaysAfterTenderClosingDate,
-        validityPeriod,
-        projectName: payload.projectName,
-        projectDescription: payload.projectDescription,
-        projectId,
-      },
-      update: {
-        clientName: payload.clientName,
-        registrationType: payload.registrationType,
-        tenderClosingDate,
-        numberOfDaysAfterTenderClosingDate,
-        validityPeriod,
-        projectName: payload.projectName,
-        projectDescription: payload.projectDescription,
-        projectId,
-      },
-    });
-
-    await prisma.request.update({
-      where: { id: payload.requestId },
-      data: {
-        status: "Draft-Details",
-      },
-    });
-
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
+    const saved = await saveRtpDetailsInSharePoint(payload);
+    revalidatePath("/submit");
     revalidatePath("/requests");
 
     return {
       success: true,
       data: {
-        projectId,
+        projectId: saved.projectId,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to save RTP project details.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to save RTP project details. ${error.message}`
+          : "Failed to save RTP project details.",
     };
   }
 }
@@ -298,79 +170,15 @@ export async function submitRtpRequest(
   const payload = validatedInput.data;
 
   try {
-    const [request, rtp] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          requestNo: true,
-          requestType: true,
-          routingType: true,
-        },
-      }),
-      prisma.rtpRequest.findUnique({
-        where: { requestId: payload.requestId },
-        select: {
-          id: true,
-          projectId: true,
-          projectName: true,
-          clientName: true,
-        },
-      }),
-    ]);
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Request was not found. Please restart the RTP form.",
-      };
-    }
-
-    if (!rtp) {
-      return {
-        success: false,
-        message: "Project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    if (!rtp.projectId || !rtp.projectName || !rtp.clientName) {
-      return {
-        success: false,
-        message: "RTP details are incomplete. Please review Step 2 and try again.",
-      };
-    }
-
-    await prisma.$transaction([
-      prisma.rtpRequest.update({
-        where: { requestId: payload.requestId },
-        data: {
-          specialProject: payload.specialProject ?? false,
-          documentUrl: payload.documentUrl,
-          documentPublicId: payload.documentPublicId,
-          documentFileName: payload.documentFileName,
-          documentMimeType: payload.documentMimeType,
-          documentSizeBytes: payload.documentSizeBytes,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          acknowledgement: true,
-          status: "New",
-          submittedAt: new Date(),
-        },
-      }),
-    ]);
-
+    const submitted = await submitRtpRequestInSharePoint(payload);
     revalidatePath("/requests");
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
-    await notifyRequestSubmissionByEmail({ requestId: request.id });
+    revalidatePath("/submit");
 
     return {
       success: true,
       data: {
-        requestId: request.id,
-        requestNo: request.requestNo,
+        requestId: payload.requestId,
+        requestNo: submitted.requestNo,
       },
     };
   } catch {

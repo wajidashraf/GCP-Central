@@ -1,6 +1,33 @@
 import { NextResponse } from "next/server";
 import { deleteFromCloudinary, uploadToCloudinary } from "@/lib/cloudinary";
-import prisma from "@/lib/prisma";
+import { getGraphClient, getDriveId, getSiteId } from "@/lib/graph";
+import {
+  clearCaaDocumentByRequestUuid,
+  clearCaaOrganisationChartByRequestUuid,
+  resolveCaaUploadedFieldByPublicId,
+} from "@/lib/sharepoint/caa";
+import {
+  clearJvpCashflowForecastByRequestUuid,
+  clearJvpCostStructureByRequestUuid,
+  clearJvpDocumentByRequestUuid,
+  resolveJvpUploadedFieldByPublicId,
+} from "@/lib/sharepoint/jvp";
+import {
+  clearStspCashflowByRequestUuid,
+  clearStspContractStructureByRequestUuid,
+  clearStspDocumentByRequestUuid,
+  clearStspRevenueVsCostByRequestUuid,
+  resolveStspUploadedFieldByPublicId,
+} from "@/lib/sharepoint/stsp";
+import { clearPccaDocumentByRequestUuid } from "@/lib/sharepoint/pcca";
+import { clearPblDocumentByRequestUuid } from "@/lib/sharepoint/pbl";
+import { clearOthersDocumentByRequestUuid } from "@/lib/sharepoint/others";
+import { clearPpDocumentByRequestUuid } from "@/lib/sharepoint/pp";
+import { clearRppDocumentByRequestUuid } from "@/lib/sharepoint/rpp";
+import { clearRtpDocumentByRequestUuid } from "@/lib/sharepoint/rtp";
+import { clearVapDocumentByRequestUuid } from "@/lib/sharepoint/vap";
+import { clearCprDocumentByRequestUuid } from "@/lib/sharepoint/cpr";
+import { clearCiDocumentByRequestUuid } from "@/lib/sharepoint/ci";
 import {
   RTP_ALLOWED_DOCUMENT_MIME_TYPES,
   RTP_MAX_DOCUMENT_SIZE_BYTES,
@@ -25,6 +52,28 @@ type RequestType =
   | "CI"
   | "OTHERS";
 
+// Request types whose documents are stored in the SharePoint Document Library
+// (and whose metadata lives in their dedicated SharePoint List).
+const SHAREPOINT_DRIVE_REQUEST_TYPES: ReadonlySet<RequestType> = new Set([
+  "RTP",
+  "PBL",
+  "JVP",
+  "STSP",
+  "PP",
+  "PCCA",
+  "R-PCCA",
+  "VAP",
+  "RPP",
+  "OTHERS",
+  "CAA",
+  "CPR",
+  "CI",
+]);
+
+function isSharePointDriveRequestType(value: string): value is RequestType {
+  return SHAREPOINT_DRIVE_REQUEST_TYPES.has(value as RequestType);
+}
+
 function sanitizeFolder(folder: string) {
   return folder
     .trim()
@@ -39,6 +88,8 @@ export async function POST(req: Request) {
 
     const file = formData.get("file");
     const folderValue = formData.get("folder");
+    const requestTypeValue = formData.get("requestType");
+    const requestIdValue = formData.get("requestId");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ message: "A document file is required." }, { status: 400 });
@@ -65,6 +116,47 @@ export async function POST(req: Request) {
         : "gcp-central/rtp";
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+    const requestType = typeof requestTypeValue === "string" ? requestTypeValue.trim().toUpperCase() : "";
+    const requestId = typeof requestIdValue === "string" ? requestIdValue.trim() : "";
+
+    if (isSharePointDriveRequestType(requestType) && requestId) {
+      const client = getGraphClient();
+      const siteId = getSiteId();
+      const driveId = getDriveId();
+      const requestTypeFolder = requestType;
+      const requestFolderPrefix = requestType.toLowerCase();
+
+      await client.api(`/sites/${siteId}/drives/${driveId}/root/children`).post({
+        name: requestTypeFolder,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "replace",
+      });
+
+      const requestFolder = `${requestFolderPrefix}_${requestId}`;
+      await client.api(`/sites/${siteId}/drives/${driveId}/root:/${requestTypeFolder}:/children`).post({
+        name: requestFolder,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "replace",
+      });
+
+      const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "_");
+      const driveItem = await client
+        .api(`/sites/${siteId}/drives/${driveId}/root:/${requestTypeFolder}/${requestFolder}/${safeFileName}:/content`)
+        .put(fileBuffer);
+
+      return NextResponse.json(
+        {
+          documentUrl: driveItem.webUrl,
+          documentPublicId: driveItem.id,
+          documentFileName: file.name,
+          documentMimeType: mimeType,
+          documentSizeBytes: file.size,
+        },
+        { status: 200 }
+      );
+    }
+
     const base64 = fileBuffer.toString("base64");
     const dataUri = `data:${mimeType};base64,${base64}`;
 
@@ -89,6 +181,61 @@ export async function POST(req: Request) {
   }
 }
 
+async function clearCaaUploadedFieldByPublicId(requestId: string, publicId: string) {
+  const matchedField = await resolveCaaUploadedFieldByPublicId(requestId, publicId);
+  if (matchedField === "document") {
+    await clearCaaDocumentByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "organisationChart") {
+    await clearCaaOrganisationChartByRequestUuid(requestId);
+    return;
+  }
+  // Fall back to clearing the final document slot. This keeps behavior safe when
+  // the CAA item could not be matched (e.g. soft-deleted or out-of-sync state).
+  await clearCaaDocumentByRequestUuid(requestId);
+}
+
+async function clearJvpUploadedFieldByPublicId(requestId: string, publicId: string) {
+  const matchedField = await resolveJvpUploadedFieldByPublicId(requestId, publicId);
+  if (matchedField === "document") {
+    await clearJvpDocumentByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "cashflowForecast") {
+    await clearJvpCashflowForecastByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "costStructure") {
+    await clearJvpCostStructureByRequestUuid(requestId);
+    return;
+  }
+  // Fall back to clearing the final document slot if the field cannot be resolved.
+  await clearJvpDocumentByRequestUuid(requestId);
+}
+
+async function clearStspUploadedFieldByPublicId(requestId: string, publicId: string) {
+  const matchedField = await resolveStspUploadedFieldByPublicId(requestId, publicId);
+  if (matchedField === "document") {
+    await clearStspDocumentByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "contractStructure") {
+    await clearStspContractStructureByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "revenueVsCost") {
+    await clearStspRevenueVsCostByRequestUuid(requestId);
+    return;
+  }
+  if (matchedField === "cashflow") {
+    await clearStspCashflowByRequestUuid(requestId);
+    return;
+  }
+  // Fall back to clearing the final document slot if the field cannot be resolved.
+  await clearStspDocumentByRequestUuid(requestId);
+}
+
 export async function DELETE(req: Request) {
   try {
     const body = (await req.json()) as {
@@ -104,46 +251,58 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ message: "publicId is required." }, { status: 400 });
     }
 
+    if (isSharePointDriveRequestType(requestType)) {
+      try {
+        const client = getGraphClient();
+        const driveId = getDriveId();
+        await client.api(`/drives/${driveId}/items/${publicId}`).delete();
+      } catch {
+        // Ignore missing file and continue clearing metadata.
+      }
+
+      if (requestId && requestType === "RTP") {
+        await clearRtpDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "PBL") {
+        await clearPblDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "PP") {
+        await clearPpDocumentByRequestUuid(requestId);
+      }
+      if (requestId && (requestType === "PCCA" || requestType === "R-PCCA")) {
+        await clearPccaDocumentByRequestUuid(requestId, requestType);
+      }
+      if (requestId && requestType === "VAP") {
+        await clearVapDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "RPP") {
+        await clearRppDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "OTHERS") {
+        await clearOthersDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "CAA") {
+        await clearCaaUploadedFieldByPublicId(requestId, publicId);
+      }
+      if (requestId && requestType === "CPR") {
+        await clearCprDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "CI") {
+        await clearCiDocumentByRequestUuid(requestId);
+      }
+      if (requestId && requestType === "JVP") {
+        await clearJvpUploadedFieldByPublicId(requestId, publicId);
+      }
+      if (requestId && requestType === "STSP") {
+        await clearStspUploadedFieldByPublicId(requestId, publicId);
+      }
+
+      return NextResponse.json({ success: true }, { status: 200 });
+    }
+
     const deletedFile = await deleteFromCloudinary(publicId);
     if (!deletedFile.success) {
       return NextResponse.json({ message: "Failed to delete uploaded file." }, { status: 502 });
-    }
-
-    if (requestId && requestType) {
-      const clearData = {
-        documentUrl: null,
-        documentPublicId: null,
-        documentFileName: null,
-        documentMimeType: null,
-        documentSizeBytes: null,
-      };
-
-      if (requestType === "RTP") {
-        await prisma.rtpRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "PBL") {
-        await prisma.pblRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "JVP") {
-        await prisma.jvpRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "STSP") {
-        await prisma.stspRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "CAA") {
-        await prisma.caaRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "PCCA" || requestType === "R-PCCA") {
-        await prisma.pccaRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "PP") {
-        await prisma.ppRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "RPP") {
-        await prisma.rppRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (requestType === "VAP") {
-        await prisma.vapRequest.updateMany({ where: { requestId }, data: clearData });
-      } else if (
-        requestType === "CPR" ||
-        requestType === "CI" ||
-        requestType === "OTHERS"
-      ) {
-        // CPR, CI, and OTHERS forms persist uploads on `OtherRequest` (see _actions/cpr.ts, ci.ts, others.ts).
-        await prisma.otherRequest.updateMany({ where: { requestId }, data: clearData });
-      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

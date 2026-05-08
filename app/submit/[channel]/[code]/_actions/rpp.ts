@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ensureProjectCode } from "@/lib/project-code";
-import prisma from "@/lib/prisma";
-import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
-import { buildNextRequestNo } from "@/lib/request-no";
+import {
+  createRppBaseRequestInSharePoint,
+  saveRppDetailsInSharePoint,
+  submitRppRequestInSharePoint,
+} from "@/lib/sharepoint/rpp";
 import {
   createRppBaseRequestSchema,
   saveRppDetailsSchema,
@@ -38,59 +39,25 @@ export async function createRppBaseRequest(
   }
 
   const payload = validatedInput.data;
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      const requestNo = await buildNextRequestNo();
-      const request = await prisma.request.create({
-        data: {
-          requestNo,
-          requestType: payload.requestType,
-          routingType: payload.routingType,
-          requestTitle: payload.requestTitle,
-          category: payload.category,
-          requestorId: payload.requestorId,
-          requestorName: payload.requestorName,
-          requestorEmail: payload.requestorEmail,
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          status: "Draft",
-          acknowledgement: false,
-        },
-      });
-
-      revalidatePath("/requests");
-
-      return {
-        success: true,
-        data: {
-          requestId: request.id,
-          requestNo: request.requestNo,
-        },
-      };
-    } catch (error) {
-      const isRequestNoConflict =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code?: string }).code === "P2002";
-
-      if (isRequestNoConflict) {
-        continue;
-      }
-
-      return {
-        success: false,
-        message: "Failed to create RPP base request.",
-      };
-    }
+  try {
+    const created = await createRppBaseRequestInSharePoint(payload);
+    revalidatePath("/requests");
+    return {
+      success: true,
+      data: {
+        requestId: created.requestId,
+        requestNo: created.requestNo,
+      },
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      message:
+        error instanceof Error && error.message
+          ? `Failed to create RPP base request. ${error.message}`
+          : "Failed to create RPP base request.",
+    };
   }
-
-  return {
-    success: false,
-    message: "Unable to generate a unique request number. Please try again.",
-  };
 }
 
 export async function saveRppDetails(
@@ -116,87 +83,32 @@ export async function saveRppDetails(
   const payload = validatedInput.data;
 
   try {
-    const [request, project] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          routingType: true,
-          requestType: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-      prisma.project.findUnique({
-        where: { id: payload.projectId },
-        select: {
-          id: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-    ]);
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Base request was not found. Please restart from Step 1.",
-      };
-    }
-
-    if (!project) {
-      return {
-        success: false,
-        message: "Selected project was not found.",
-        fieldErrors: { projectId: ["Please select a valid project"] },
-      };
-    }
-
-    let projectCode = project.projectCode?.trim() || payload.projectCode?.trim() || "";
-    if (!projectCode) {
-      projectCode = await ensureProjectCode(project.id);
-    }
-
-    await prisma.rppRequest.upsert({
-      where: { requestId: payload.requestId },
-      create: {
-        requestId: payload.requestId,
-        projectId: project.id,
-        projectCode: projectCode || null,
-      },
-      update: {
-        projectId: project.id,
-        projectCode: projectCode || null,
-      },
+    const saved = await saveRppDetailsInSharePoint({
+      requestId: payload.requestId,
+      projectId: payload.projectId,
+      projectCode: payload.projectCode,
     });
 
-    await prisma.request.update({
-      where: { id: payload.requestId },
-      data: {
-        status: "Draft-Details",
-      },
-    });
-
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
+    revalidatePath("/submit");
     revalidatePath("/requests");
 
     return {
       success: true,
       data: {
-        projectId: project.id,
-        projectCode,
-        companyId: project.companyId,
-        companyCode: project.companyCode,
-        companyName: project.companyName,
+        projectId: saved.projectId,
+        projectCode: saved.projectCode,
+        companyId: payload.companyId,
+        companyCode: payload.companyCode,
+        companyName: payload.companyName,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to save RPP project details.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to save RPP project details. ${error.message}`
+          : "Failed to save RPP project details.",
     };
   }
 }
@@ -216,75 +128,31 @@ export async function submitRppRequest(
   const payload = validatedInput.data;
 
   try {
-    const [request, rpp] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          requestNo: true,
-          requestType: true,
-          routingType: true,
-        },
-      }),
-      prisma.rppRequest.findUnique({
-        where: { requestId: payload.requestId },
-        select: {
-          id: true,
-          projectId: true,
-        },
-      }),
-    ]);
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Request was not found. Please restart the RPP form.",
-      };
-    }
-
-    if (!rpp || !rpp.projectId) {
-      return {
-        success: false,
-        message: "RPP project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    await prisma.$transaction([
-      prisma.rppRequest.update({
-        where: { requestId: payload.requestId },
-        data: {
-          documentUrl: payload.documentUrl,
-          documentPublicId: payload.documentPublicId,
-          documentFileName: payload.documentFileName,
-          documentMimeType: payload.documentMimeType,
-          documentSizeBytes: payload.documentSizeBytes,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          acknowledgement: true,
-          status: "New",
-          submittedAt: new Date(),
-        },
-      }),
-    ]);
-
+    const submitted = await submitRppRequestInSharePoint({
+      requestId: payload.requestId,
+      documentUrl: payload.documentUrl,
+      documentPublicId: payload.documentPublicId,
+      documentFileName: payload.documentFileName,
+      documentMimeType: payload.documentMimeType,
+      documentSizeBytes: payload.documentSizeBytes,
+    });
     revalidatePath("/requests");
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
-    await notifyRequestSubmissionByEmail({ requestId: request.id });
+    revalidatePath("/submit");
 
     return {
       success: true,
       data: {
-        requestId: request.id,
-        requestNo: request.requestNo,
+        requestId: payload.requestId,
+        requestNo: submitted.requestNo,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to submit RPP request.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to submit RPP request. ${error.message}`
+          : "Failed to submit RPP request.",
     };
   }
 }

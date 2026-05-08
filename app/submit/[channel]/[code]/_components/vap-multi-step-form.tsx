@@ -127,6 +127,10 @@ export default function VapMultiStepForm({ channel, requestor, projects, canSubm
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/vap");
+      formData.set("requestType", VAP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

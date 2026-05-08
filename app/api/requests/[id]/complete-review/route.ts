@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
+import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
 export async function POST(
   _request: Request,
@@ -19,33 +19,29 @@ export async function POST(
 
     const { id } = await params;
 
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: { id: true },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<{ id: string; uuid?: string }>(requestsListId);
+    const requestRecord = requestItems.find((item) => {
+      const uuid = (item.uuid ?? '').trim();
+      return item.id === id || uuid === id;
     });
 
     if (!requestRecord) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
-    const suggestionsCount = await prisma.reviewerSuggestion.count({
-      where: { requestId: id },
+    await updateItem(requestsListId, requestRecord.id, {
+      status: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
+      outcome: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
     });
-
-    if (suggestionsCount < 1) {
-      return NextResponse.json(
-        { error: 'At least one suggestion is required to complete review' },
-        { status: 400 }
-      );
-    }
-
-    const updated = await prisma.request.update({
-      where: { id },
-      data: {
-        status: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
-      },
-      select: { id: true, status: true, updatedAt: true },
-    });
+    const updated = {
+      id: (requestRecord.uuid ?? '').trim() || requestRecord.id,
+      status: REQUEST_STATUS_MAP.COMPLETE_REVIEW.label,
+      updatedAt: new Date().toISOString(),
+    };
 
     return NextResponse.json(updated);
   } catch (error) {

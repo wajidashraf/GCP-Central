@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS, REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { sendEmail } from '@/lib/email/email-service';
 import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
+import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
 const READY_FOR_ENGAGEMENT_STATUS = REQUEST_STATUS_MAP.READY_FOR_ENGAGEMENT.label;
 
@@ -127,8 +127,21 @@ export async function POST(
     }
 
     // Check if request exists
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<{
+      id: string;
+      uuid?: string;
+      requestNo?: string;
+      requestTitle?: string;
+      requestorEmail?: string;
+      requestorName?: string;
+    }>(requestsListId);
+    const requestRecord = requestItems.find((item) => {
+      const uuid = (item.uuid ?? '').trim();
+      return item.id === id || uuid === id || (item.requestNo ?? '').trim() === id;
     });
 
     if (!requestRecord) {
@@ -139,49 +152,36 @@ export async function POST(
     }
 
     // Create or update verifier comment
-    const verifierComment = await prisma.verifierComment.upsert({
-      where: { requestId: id },
-      update: {
-        comment: normalizedComment,
-        decisionCode: normalizedRequestStatus,
-        verifiedBy: user.name,
-      },
-      create: {
-        requestId: id,
-        verifierId: user.id,
-        comment: normalizedComment,
-        decisionCode: normalizedRequestStatus,
-        verifiedBy: user.name,
-      },
+    await updateItem(requestsListId, requestRecord.id, {
+      status: normalizedRequestStatus,
+      verifierCommentText: normalizedComment,
+      verifierDecisionCode: normalizedRequestStatus,
+      verifiedBy: user.name,
+      verifiedAt: new Date().toISOString(),
+      outcome: normalizedRequestStatus,
     });
-
-    // Update request status based on decision code
-    await prisma.request.update({
-      where: { id },
-      data: {
-        status: normalizedRequestStatus,
-        verifierCommentText: normalizedComment,
-        verifierDecisionCode: normalizedRequestStatus,
-        verifiedBy: user.name,
-        verifiedAt: new Date(),
-      },
-    });
+    const requestRouteId = (requestRecord.uuid ?? '').trim() || requestRecord.id;
 
     if (normalizedRequestStatus === READY_FOR_ENGAGEMENT_STATUS) {
       await sendReadyForEngagementEmail({
-        requestNo: requestRecord.requestNo,
-        requestTitle: requestRecord.requestTitle,
-        requestorEmail: requestRecord.requestorEmail,
-        requestorName: requestRecord.requestorName,
+        requestNo: requestRecord.requestNo ?? requestRouteId,
+        requestTitle: requestRecord.requestTitle ?? 'Request',
+        requestorEmail: requestRecord.requestorEmail ?? '',
+        requestorName: requestRecord.requestorName ?? 'Requestor',
         verifierName: user.name,
         comment: normalizedComment,
-        requestId: id,
+        requestId: requestRouteId,
       }).catch((emailError) => {
         console.error('Ready for Engagement notification failed:', emailError);
       });
     }
 
-    return NextResponse.json(verifierComment);
+    return NextResponse.json({
+      requestId: requestRouteId,
+      decisionCode: normalizedRequestStatus,
+      comment: normalizedComment,
+      verifiedBy: user.name,
+    });
   } catch (error) {
     console.error('Error creating verifier comment:', error);
     return NextResponse.json(
@@ -198,15 +198,34 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const verifierComment = await prisma.verifierComment.findUnique({
-      where: { requestId: id },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<{
+      id: string;
+      uuid?: string;
+      verifierCommentText?: string;
+      verifierDecisionCode?: string;
+      verifiedBy?: string;
+      verifiedAt?: string;
+    }>(requestsListId);
+    const requestRecord = requestItems.find((item) => {
+      const uuid = (item.uuid ?? '').trim();
+      return item.id === id || uuid === id;
     });
 
-    if (!verifierComment) {
+    if (!requestRecord || !(requestRecord.verifierCommentText ?? '').trim()) {
       return NextResponse.json(null);
     }
 
-    return NextResponse.json(verifierComment);
+    return NextResponse.json({
+      requestId: (requestRecord.uuid ?? '').trim() || requestRecord.id,
+      comment: requestRecord.verifierCommentText ?? '',
+      decisionCode: requestRecord.verifierDecisionCode ?? '',
+      verifiedBy: requestRecord.verifiedBy ?? '',
+      verifiedAt: requestRecord.verifiedAt ?? null,
+    });
   } catch (error) {
     console.error('Error fetching verifier comment:', error);
     return NextResponse.json(

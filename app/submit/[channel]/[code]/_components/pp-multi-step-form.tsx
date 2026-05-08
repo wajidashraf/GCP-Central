@@ -37,7 +37,7 @@ type PersistedPpState = {
   acknowledgement: boolean;
 };
 
-const PP_SESSION_STORAGE_KEY = "gcp-central:form:pp:v1";
+const PP_SESSION_STORAGE_KEY = "gcp-central:form:pp:v2";
 const MAX_FILE_SIZE_MB = PP_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
 const acceptedDocumentTypes = PP_ALLOWED_DOCUMENT_MIME_TYPES.join(",");
 
@@ -147,6 +147,10 @@ export default function PpMultiStepForm({ channel, requestor, projects, canSubmi
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/pp");
+      formData.set("requestType", PP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

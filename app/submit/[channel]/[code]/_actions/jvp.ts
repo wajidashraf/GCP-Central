@@ -1,11 +1,13 @@
 "use server";
 
-import { Prisma, PrismaClient } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
-import prisma from "@/lib/prisma";
-import { buildNextRequestNo } from "@/lib/request-no";
+import {
+  createJvpBaseRequestInSharePoint,
+  saveJvpDetailsInSharePoint,
+  saveJvpProjectDetailsInSharePoint,
+  submitJvpRequestInSharePoint,
+} from "@/lib/sharepoint/jvp";
 import {
   createJvpBaseRequestSchema,
   saveJvpDetailsSchema,
@@ -27,17 +29,6 @@ function getFieldErrors(error: z.ZodError) {
   return error.flatten().fieldErrors;
 }
 
-function getJvpRequestDelegate() {
-  const clientWithJvp = prisma as PrismaClient & {
-    jvpRequest?: PrismaClient["jvpRequest"];
-  };
-  return clientWithJvp.jvpRequest;
-}
-
-function buildJvpPersistenceUnavailableMessage(actionLabel: string) {
-  return `Failed to ${actionLabel}. JVP persistence is not initialized yet. Please restart the app server and try again.`;
-}
-
 export async function createJvpBaseRequest(
   input: CreateJvpBaseRequestInput
 ): Promise<ActionResult<{ requestId: string; requestNo: string }>> {
@@ -52,58 +43,25 @@ export async function createJvpBaseRequest(
 
   const payload = validatedInput.data;
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      const requestNo = await buildNextRequestNo();
-      const request = await prisma.request.create({
-        data: {
-          requestNo,
-          requestType: payload.requestType,
-          routingType: payload.routingType,
-          requestTitle: payload.requestTitle,
-          category: payload.category,
-          requestorId: payload.requestorId,
-          requestorName: payload.requestorName,
-          requestorEmail: payload.requestorEmail,
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          status: "Draft",
-          acknowledgement: false,
-        },
-      });
-
-      revalidatePath("/requests");
-
-      return {
-        success: true,
-        data: {
-          requestId: request.id,
-          requestNo: request.requestNo,
-        },
-      };
-    } catch (error) {
-      const isRequestNoConflict =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code?: string }).code === "P2002";
-
-      if (isRequestNoConflict) {
-        continue;
-      }
-
-      return {
-        success: false,
-        message: "Failed to create JVP base request.",
-      };
-    }
+  try {
+    const created = await createJvpBaseRequestInSharePoint(payload);
+    revalidatePath("/requests");
+    return {
+      success: true,
+      data: {
+        requestId: created.requestId,
+        requestNo: created.requestNo,
+      },
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      message:
+        error instanceof Error && error.message
+          ? `Failed to create JVP base request. ${error.message}`
+          : "Failed to create JVP base request.",
+    };
   }
-
-  return {
-    success: false,
-    message: "Unable to generate a unique request number. Please try again.",
-  };
 }
 
 export async function saveJvpProjectDetails(
@@ -127,102 +85,31 @@ export async function saveJvpProjectDetails(
   }
 
   const payload = validatedInput.data;
-  const jvpRequestDelegate = getJvpRequestDelegate();
-  if (!jvpRequestDelegate) {
-    return {
-      success: false,
-      message: buildJvpPersistenceUnavailableMessage("save JVP project details"),
-    };
-  }
 
   try {
-    const [request, project] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          routingType: true,
-          requestType: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-      prisma.project.findUnique({
-        where: { id: payload.projectId },
-        select: {
-          id: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-    ]);
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Base request was not found. Please restart from Step 1.",
-      };
-    }
-
-    if (!project) {
-      return {
-        success: false,
-        message: "Selected project was not found.",
-        fieldErrors: { projectId: ["Please select a valid project"] },
-      };
-    }
-
-    const projectCode = project.projectCode?.trim() || payload.projectCode?.trim() || "";
-
-    await jvpRequestDelegate.upsert({
-      where: { requestId: payload.requestId },
-      create: {
-        requestId: payload.requestId,
-        projectId: project.id,
-        projectCode: projectCode || null,
-      },
-      update: {
-        projectId: project.id,
-        projectCode: projectCode || null,
-      },
+    const saved = await saveJvpProjectDetailsInSharePoint({
+      requestId: payload.requestId,
+      projectId: payload.projectId,
+      projectCode: payload.projectCode,
     });
-
-    await prisma.request.update({
-      where: { id: payload.requestId },
-      data: {
-        status: "Draft-Details",
-      },
-    });
-
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
+    revalidatePath("/submit");
     revalidatePath("/requests");
 
     return {
       success: true,
       data: {
-        projectId: project.id,
-        projectCode,
-        companyId: project.companyId,
-        companyCode: project.companyCode,
-        companyName: project.companyName,
+        projectId: saved.projectId,
+        projectCode: saved.projectCode,
+        companyId: payload.companyId,
+        companyCode: payload.companyCode,
+        companyName: payload.companyName,
       },
     };
-  } catch (error) {
-    console.error("saveJvpProjectDetails failed:", error);
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      return {
-        success: false,
-        message: "Unable to save JVP project details due to a database constraint issue.",
-      };
-    }
+  } catch (error: unknown) {
     return {
       success: false,
       message:
-        error instanceof Error && error.message.trim().length > 0
+        error instanceof Error && error.message
           ? `Failed to save JVP project details. ${error.message}`
           : "Failed to save JVP project details.",
     };
@@ -242,86 +129,23 @@ export async function saveJvpDetails(
   }
 
   const payload = validatedInput.data;
-  const jvpRequestDelegate = getJvpRequestDelegate();
-  if (!jvpRequestDelegate) {
-    return {
-      success: false,
-      message: buildJvpPersistenceUnavailableMessage("save JVP details"),
-    };
-  }
 
   try {
-    const jvp = await jvpRequestDelegate.findUnique({
-      where: { requestId: payload.requestId },
-      select: { id: true },
-    });
-
-    if (!jvp) {
-      return {
-        success: false,
-        message: "Project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    await prisma.$transaction([
-      jvpRequestDelegate.update({
-        where: { id: jvp.id },
-        data: {
-          teamLeader: payload.teamLeader,
-          financialMatters: payload.financialMatters,
-          technicalMatters: payload.technicalMatters,
-          contractMatters: payload.contractMatters,
-          procurementMatters: payload.procurementMatters,
-          costingAndEstimationMatters: payload.costingAndEstimationMatters,
-          implementationStage: payload.implementationStage,
-          backgroundOfCollabPoints:
-            payload.backgroundOfCollabPoints as Prisma.InputJsonValue,
-          scopeOfCollabPoints: payload.scopeOfCollabPoints as Prisma.InputJsonValue,
-          proposedStructurePoints:
-            payload.proposedStructurePoints as Prisma.InputJsonValue,
-          keyTermsPoints: payload.keyTermsPoints as Prisma.InputJsonValue,
-          financialOverviewPoints:
-            payload.financialOverviewPoints as Prisma.InputJsonValue,
-          technicalCapabilitiesPoints:
-            payload.technicalCapabilitiesPoints as Prisma.InputJsonValue,
-          workPackagesDivisionPoints:
-            payload.workPackagesDivisionPoints as Prisma.InputJsonValue,
-          resourcesContributionPoints:
-            payload.resourcesContributionPoints as Prisma.InputJsonValue,
-          riskReviewMitigationItems:
-            payload.riskReviewMitigationItems as Prisma.InputJsonValue,
-          cashflowForecastUrl: payload.cashflowForecastUrl,
-          cashflowForecastPublicId: payload.cashflowForecastPublicId,
-          cashflowForecastFileName: payload.cashflowForecastFileName,
-          cashflowForecastMimeType: payload.cashflowForecastMimeType,
-          cashflowForecastSizeBytes: payload.cashflowForecastSizeBytes,
-          costStructureUrl: payload.costStructureUrl,
-          costStructurePublicId: payload.costStructurePublicId,
-          costStructureFileName: payload.costStructureFileName,
-          costStructureMimeType: payload.costStructureMimeType,
-          costStructureSizeBytes: payload.costStructureSizeBytes,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          status: "Draft-JVP",
-        },
-      }),
-    ]);
-
+    await saveJvpDetailsInSharePoint(payload);
     revalidatePath("/requests");
-
     return {
       success: true,
       data: {
         requestId: payload.requestId,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to save JVP details.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to save JVP details. ${error.message}`
+          : "Failed to save JVP details.",
     };
   }
 }
@@ -339,103 +163,34 @@ export async function submitJvpRequest(
   }
 
   const payload = validatedInput.data;
-  const jvpRequestDelegate = getJvpRequestDelegate();
-  if (!jvpRequestDelegate) {
-    return {
-      success: false,
-      message: buildJvpPersistenceUnavailableMessage("submit JVP request"),
-    };
-  }
 
   try {
-    const [request, jvp] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          requestNo: true,
-          requestType: true,
-          routingType: true,
-        },
-      }),
-      jvpRequestDelegate.findUnique({
-        where: { requestId: payload.requestId },
-        select: {
-          id: true,
-          projectId: true,
-          teamLeader: true,
-          backgroundOfCollabPoints: true,
-          riskReviewMitigationItems: true,
-          cashflowForecastPublicId: true,
-          costStructurePublicId: true,
-        },
-      }),
-    ]);
-
-    if (!request) {
-      return {
-        success: false,
-        message: "Request was not found. Please restart the JVP form.",
-      };
-    }
-
-    if (!jvp) {
-      return {
-        success: false,
-        message: "JVP details are missing. Complete Step 6 first.",
-      };
-    }
-
-    if (
-      !jvp.projectId ||
-      !jvp.teamLeader ||
-      !jvp.backgroundOfCollabPoints ||
-      !jvp.riskReviewMitigationItems ||
-      !jvp.cashflowForecastPublicId ||
-      !jvp.costStructurePublicId
-    ) {
-      return {
-        success: false,
-        message: "JVP details are incomplete. Please review Steps 2-6 and try again.",
-      };
-    }
-
-    await prisma.$transaction([
-      jvpRequestDelegate.update({
-        where: { requestId: payload.requestId },
-        data: {
-          documentUrl: payload.documentUrl,
-          documentPublicId: payload.documentPublicId,
-          documentFileName: payload.documentFileName,
-          documentMimeType: payload.documentMimeType,
-          documentSizeBytes: payload.documentSizeBytes,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          acknowledgement: true,
-          status: "New",
-          submittedAt: new Date(),
-        },
-      }),
-    ]);
+    const submitted = await submitJvpRequestInSharePoint({
+      requestId: payload.requestId,
+      documentUrl: payload.documentUrl,
+      documentPublicId: payload.documentPublicId,
+      documentFileName: payload.documentFileName,
+      documentMimeType: payload.documentMimeType,
+      documentSizeBytes: payload.documentSizeBytes,
+    });
 
     revalidatePath("/requests");
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
-    await notifyRequestSubmissionByEmail({ requestId: request.id });
+    revalidatePath("/submit");
 
     return {
       success: true,
       data: {
-        requestId: request.id,
-        requestNo: request.requestNo,
+        requestId: payload.requestId,
+        requestNo: submitted.requestNo,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to submit JVP request.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to submit JVP request. ${error.message}`
+          : "Failed to submit JVP request.",
     };
   }
 }

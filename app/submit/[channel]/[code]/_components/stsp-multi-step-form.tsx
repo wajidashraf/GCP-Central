@@ -349,6 +349,10 @@ export default function StspMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", folder);
+      formData.set("requestType", STSP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
 

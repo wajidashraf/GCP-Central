@@ -174,7 +174,13 @@ export default function CaaMultiStepForm({ channel, requestTitle, requestor, pro
     }
     setIsUploading(true);
     try {
-      const formData = new FormData(); formData.set("file", file); formData.set("folder", folder);
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("folder", folder);
+      if (requestId) {
+        formData.set("requestType", CAA_FORM_CODE);
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

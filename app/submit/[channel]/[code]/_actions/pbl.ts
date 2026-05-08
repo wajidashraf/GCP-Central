@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ensureProjectCode } from "@/lib/project-code";
-import prisma from "@/lib/prisma";
-import { notifyRequestSubmissionByEmail } from "@/lib/email/request-notifications";
-import { buildNextRequestNo } from "@/lib/request-no";
+import {
+  createPblBaseRequestInSharePoint,
+  getPblSubmissionSnapshotFromSharePoint,
+  savePblBiddersInSharePoint,
+  savePblDetailsInSharePoint,
+  submitPblRequestInSharePoint,
+} from "@/lib/sharepoint/pbl";
 import {
   PBL_MIN_BIDDERS_WITHOUT_JUSTIFICATION,
   createPblBaseRequestSchema,
@@ -42,58 +45,22 @@ export async function createPblBaseRequest(
 
   const payload = validatedInput.data;
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      const requestNo = await buildNextRequestNo();
-      const request = await prisma.request.create({
-        data: {
-          requestNo,
-          requestType: payload.requestType,
-          routingType: payload.routingType,
-          requestTitle: payload.requestTitle,
-          category: payload.category,
-          requestorId: payload.requestorId,
-          requestorName: payload.requestorName,
-          requestorEmail: payload.requestorEmail,
-          companyId: payload.companyId,
-          companyCode: payload.companyCode,
-          companyName: payload.companyName,
-          status: "Draft",
-          acknowledgement: false,
-        },
-      });
-
-      revalidatePath("/requests");
-
-      return {
-        success: true,
-        data: {
-          requestId: request.id,
-          requestNo: request.requestNo,
-        },
-      };
-    } catch (error) {
-      const isRequestNoConflict =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code?: string }).code === "P2002";
-
-      if (isRequestNoConflict) {
-        continue;
-      }
-
-      return {
-        success: false,
-        message: "Failed to create PBL base request.",
-      };
-    }
+  try {
+    const created = await createPblBaseRequestInSharePoint(payload);
+    revalidatePath("/requests");
+    return {
+      success: true,
+      data: {
+        requestId: created.requestId,
+        requestNo: created.requestNo,
+      },
+    };
+  } catch {
+    return {
+      success: false,
+      message: "Failed to create PBL base request.",
+    };
   }
-
-  return {
-    success: false,
-    message: "Unable to generate a unique request number. Please try again.",
-  };
 }
 
 export async function savePblDetails(
@@ -119,89 +86,35 @@ export async function savePblDetails(
   const payload = validatedInput.data;
 
   try {
-    const [request, project] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          routingType: true,
-          requestType: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-      prisma.project.findUnique({
-        where: { id: payload.projectId },
-        select: {
-          id: true,
-          projectCode: true,
-          companyId: true,
-          companyCode: true,
-          companyName: true,
-        },
-      }),
-    ]);
+    const projectCode = payload.projectCode?.trim() || "";
 
-    if (!request) {
-      return {
-        success: false,
-        message: "Base request was not found. Please restart from Step 1.",
-      };
-    }
-
-    if (!project) {
-      return {
-        success: false,
-        message: "Selected project was not found.",
-        fieldErrors: { projectId: ["Please select a valid project"] },
-      };
-    }
-
-    let projectCode = project.projectCode?.trim() || payload.projectCode?.trim() || "";
-    if (!projectCode) {
-      projectCode = await ensureProjectCode(project.id);
-    }
-
-    await prisma.pblRequest.upsert({
-      where: { requestId: payload.requestId },
-      create: {
-        requestId: payload.requestId,
-        projectId: project.id,
-        projectCode: projectCode || null,
-        procurementMethod: payload.procurementMethod,
-      },
-      update: {
-        projectId: project.id,
-        projectCode: projectCode || null,
-        procurementMethod: payload.procurementMethod,
-      },
+    await savePblDetailsInSharePoint({
+      requestId: payload.requestId,
+      projectId: payload.projectId,
+      projectCode,
+      procurementMethod: payload.procurementMethod,
     });
 
-    await prisma.request.update({
-      where: { id: payload.requestId },
-      data: {
-        status: "Draft-Details",
-      },
-    });
-
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
+    revalidatePath("/submit");
     revalidatePath("/requests");
 
     return {
       success: true,
       data: {
-        projectId: project.id,
+        projectId: payload.projectId,
         projectCode,
-        companyId: project.companyId,
-        companyCode: project.companyCode,
-        companyName: project.companyName,
+        companyId: payload.companyId,
+        companyCode: payload.companyCode,
+        companyName: payload.companyName,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to save PBL project details.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to save PBL project details. ${error.message}`
+          : "Failed to save PBL project details.",
     };
   }
 }
@@ -221,53 +134,7 @@ export async function savePblBidders(
   const payload = validatedInput.data;
 
   try {
-    const pbl = await prisma.pblRequest.findUnique({
-      where: { requestId: payload.requestId },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!pbl) {
-      return {
-        success: false,
-        message: "Project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    const justificationForLessBidders = payload.justificationForLessBidders?.trim() || null;
-    const createBidderOperations = payload.bidders.map((bidder) =>
-      prisma.pblBidder.create({
-        data: {
-          pblRequestId: pbl.id,
-          companyName: bidder.companyName.trim(),
-          location: bidder.location?.trim() || null,
-          personInCharge: bidder.personInCharge.trim(),
-          picContactNumber: bidder.picContactNumber.trim(),
-          sourcesFrom: bidder.sourcesFrom?.trim() || "",
-          recommendationBy: bidder.recommendationBy?.trim() || "",
-        },
-      })
-    );
-
-    await prisma.$transaction([
-      prisma.pblBidder.deleteMany({
-        where: { pblRequestId: pbl.id },
-      }),
-      ...createBidderOperations,
-      prisma.pblRequest.update({
-        where: { id: pbl.id },
-        data: {
-          justificationForLessBidders,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          status: "Draft-Bidders",
-        },
-      }),
-    ]);
+    await savePblBiddersInSharePoint(payload);
 
     revalidatePath("/requests");
 
@@ -277,10 +144,13 @@ export async function savePblBidders(
         bidderCount: payload.bidders.length,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to save PBL bidder list.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to save PBL bidder list. ${error.message}`
+          : "Failed to save PBL bidder list.",
     };
   }
 }
@@ -300,52 +170,9 @@ export async function submitPblRequest(
   const payload = validatedInput.data;
 
   try {
-    const [request, pbl] = await Promise.all([
-      prisma.request.findUnique({
-        where: { id: payload.requestId },
-        select: {
-          id: true,
-          requestNo: true,
-          requestType: true,
-          routingType: true,
-        },
-      }),
-      prisma.pblRequest.findUnique({
-        where: { requestId: payload.requestId },
-        select: {
-          id: true,
-          projectId: true,
-          justificationForLessBidders: true,
-        },
-      }),
-    ]);
+    const submissionSnapshot = await getPblSubmissionSnapshotFromSharePoint(payload.requestId);
 
-    if (!request) {
-      return {
-        success: false,
-        message: "Request was not found. Please restart the PBL form.",
-      };
-    }
-
-    if (!pbl) {
-      return {
-        success: false,
-        message: "PBL project details are missing. Complete Step 2 first.",
-      };
-    }
-
-    if (!pbl.projectId) {
-      return {
-        success: false,
-        message: "Project details are incomplete. Please review Step 2 and try again.",
-      };
-    }
-
-    const bidderCount = await prisma.pblBidder.count({
-      where: { pblRequestId: pbl.id },
-    });
-
-    if (bidderCount < 1) {
+    if (submissionSnapshot.bidderCount < 1) {
       return {
         success: false,
         message: "At least one bidder is required before submission.",
@@ -353,8 +180,8 @@ export async function submitPblRequest(
     }
 
     if (
-      bidderCount < PBL_MIN_BIDDERS_WITHOUT_JUSTIFICATION &&
-      !(pbl.justificationForLessBidders ?? "").trim()
+      submissionSnapshot.bidderCount < PBL_MIN_BIDDERS_WITHOUT_JUSTIFICATION &&
+      !(submissionSnapshot.justificationForLessBidders ?? "").trim()
     ) {
       return {
         success: false,
@@ -367,42 +194,32 @@ export async function submitPblRequest(
       };
     }
 
-    await prisma.$transaction([
-      prisma.pblRequest.update({
-        where: { requestId: payload.requestId },
-        data: {
-          documentUrl: payload.documentUrl,
-          documentPublicId: payload.documentPublicId,
-          documentFileName: payload.documentFileName,
-          documentMimeType: payload.documentMimeType,
-          documentSizeBytes: payload.documentSizeBytes,
-        },
-      }),
-      prisma.request.update({
-        where: { id: payload.requestId },
-        data: {
-          acknowledgement: true,
-          status: "New",
-          submittedAt: new Date(),
-        },
-      }),
-    ]);
+    const submitted = await submitPblRequestInSharePoint({
+      requestId: payload.requestId,
+      documentUrl: payload.documentUrl,
+      documentPublicId: payload.documentPublicId,
+      documentFileName: payload.documentFileName,
+      documentMimeType: payload.documentMimeType,
+      documentSizeBytes: payload.documentSizeBytes,
+    });
 
     revalidatePath("/requests");
-    revalidatePath(`/submit/${request.routingType.toLowerCase()}/${request.requestType}`);
-    await notifyRequestSubmissionByEmail({ requestId: request.id });
+    revalidatePath("/submit");
 
     return {
       success: true,
       data: {
-        requestId: request.id,
-        requestNo: request.requestNo,
+        requestId: payload.requestId,
+        requestNo: submitted.requestNo,
       },
     };
-  } catch {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: "Failed to submit PBL request.",
+      message:
+        error instanceof Error && error.message
+          ? `Failed to submit PBL request. ${error.message}`
+          : "Failed to submit PBL request.",
     };
   }
 }

@@ -332,6 +332,10 @@ export default function RppMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/rpp");
+      formData.set("requestType", RPP_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
 
       const response = await fetch("/api/uploads/cloudinary", {
         method: "POST",

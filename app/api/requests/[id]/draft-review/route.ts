@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { isValidReviewerDecisionCodeForRequestType } from '@/src/constants/reviewerDecisionCodes';
 import { sendEmail } from '@/lib/email/email-service';
 import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
-import type { Prisma } from '@prisma/client';
+import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
 const WORKING_GCPC_SOURCE_ROLE = 'working_gcpc';
 const DRAFT_REVIEW_STATUS = REQUEST_STATUS_MAP.DRAFT_REVIEW.label;
@@ -97,27 +96,37 @@ function mapDecisionCodeToReviewConclusionFlags(decisionCode: string) {
 }
 
 async function notifyWorkingGcpcUsers(requestId: string, reviewerName: string) {
-  const requestRecord = await prisma.request.findUnique({
-    where: { id: requestId },
-    select: {
-      id: true,
-      requestNo: true,
-      requestTitle: true,
-      requestType: true,
-      routingType: true,
-      companyName: true,
-      companyCode: true,
-    },
+  const requestsListId = process.env.REQUESTS_LIST_ID;
+  const usersListId = process.env.USERS_LIST_ID;
+  if (!requestsListId || !usersListId) return;
+  const [requestItems, users] = await Promise.all([
+    listItems<{
+      id: string;
+      uuid?: string;
+      requestNo?: string;
+      requestTitle?: string;
+      requestType?: string;
+      routingType?: string;
+      companyName?: string;
+      companyCode?: string;
+    }>(requestsListId),
+    listItems<{ email?: string; primaryRole?: string; roles?: string; isActive?: boolean }>(usersListId),
+  ]);
+  const requestRecord = requestItems.find((item) => {
+    const uuid = (item.uuid ?? '').trim();
+    return item.id === requestId || uuid === requestId;
   });
 
   if (!requestRecord) return;
 
-  const workingGcpcUsers = await prisma.user.findMany({
-    where: {
-      isActive: true,
-      OR: [{ primaryRole: WORKING_GCPC_SOURCE_ROLE }, { roles: { has: WORKING_GCPC_SOURCE_ROLE } }],
-    },
-    select: { email: true },
+  const workingGcpcUsers = users.filter((entry) => {
+    const primaryRole = (entry.primaryRole ?? '').trim().toLowerCase();
+    const rolesText = (entry.roles ?? '').trim();
+    const roles = rolesText ? JSON.parse(rolesText) : [];
+    const hasRole =
+      primaryRole === WORKING_GCPC_SOURCE_ROLE ||
+      (Array.isArray(roles) && roles.map((role) => String(role).toLowerCase()).includes(WORKING_GCPC_SOURCE_ROLE));
+    return Boolean(entry.isActive) && hasRole;
   });
 
   const recipients = dedupeEmails(workingGcpcUsers.map((user) => user.email));
@@ -127,14 +136,14 @@ async function notifyWorkingGcpcUsers(requestId: string, reviewerName: string) {
   const detailsHtml = `
     Reviewer has reviewed the request data and submitted decision for this request.<br><br>
     Please log in to GCP Central and review the request data.<br><br>
-    <strong>Request No:</strong> ${escapeHtml(requestRecord.requestNo)}<br>
-    <strong>Title:</strong> ${escapeHtml(requestRecord.requestTitle)}<br>
-    <strong>Type:</strong> ${escapeHtml(requestRecord.routingType)} / ${escapeHtml(requestRecord.requestType)}<br>
-    <strong>Company:</strong> ${escapeHtml(requestRecord.companyName)} (${escapeHtml(requestRecord.companyCode)})<br>
+    <strong>Request No:</strong> ${escapeHtml(requestRecord.requestNo ?? '')}<br>
+    <strong>Title:</strong> ${escapeHtml(requestRecord.requestTitle ?? '')}<br>
+    <strong>Type:</strong> ${escapeHtml(requestRecord.routingType ?? '')} / ${escapeHtml(requestRecord.requestType ?? '')}<br>
+    <strong>Company:</strong> ${escapeHtml(requestRecord.companyName ?? '')} (${escapeHtml(requestRecord.companyCode ?? '')})<br>
     <strong>Reviewed By:</strong> ${escapeHtml(reviewerName)}
   `;
 
-  const subject = `Reviewer completed review: ${requestRecord.requestNo}`;
+  const subject = `Reviewer completed review: ${requestRecord.requestNo ?? 'Request'}`;
   const html = getCustomTemplate(
     subject,
     detailsHtml,
@@ -153,7 +162,7 @@ async function notifyWorkingGcpcUsers(requestId: string, reviewerName: string) {
   if (!result.success) {
     console.error('Draft Review notification email failed:', {
       requestId,
-      requestNo: requestRecord.requestNo,
+      requestNo: requestRecord.requestNo ?? '',
       error: result.error,
     });
   }
@@ -190,39 +199,50 @@ export async function POST(
       return NextResponse.json({ error: 'Decision code is required' }, { status: 400 });
     }
 
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: { id: true, requestType: true },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: 'REQUESTS_LIST_ID is not configured' }, { status: 500 });
+    }
+    const requestItems = await listItems<{
+      id: string;
+      uuid?: string;
+      requestType?: string;
+    }>(requestsListId);
+    const requestRecord = requestItems.find((item) => {
+      const uuid = (item.uuid ?? '').trim();
+      return item.id === id || uuid === id;
     });
 
     if (!requestRecord) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
-    if (!isValidReviewerDecisionCodeForRequestType(requestRecord.requestType, decisionCode)) {
+    if (!isValidReviewerDecisionCodeForRequestType(requestRecord.requestType ?? '', decisionCode)) {
       return NextResponse.json(
         { error: 'Invalid decision code for this request type' },
         { status: 400 }
       );
     }
 
-    const updated = await prisma.request.update({
-      where: { id },
-      data: {
-        status: DRAFT_REVIEW_STATUS,
-        reviewerCommentText: comment,
-        reviewerDecisionCode: decisionCode,
-        reviewerCommentList: parsedCommentData.reviewerCommentList ?? null,
-        reviewerCommentTable: parsedCommentData.reviewerCommentTable ?? null,
-        reviewerCommentUrls: parsedCommentData.reviewerCommentUrls,
-        reviewedBy: user.name,
-        reviewedAt: new Date(),
-        ...reviewConclusionFlags,
-      } as Prisma.RequestUpdateInput,
-      select: { id: true, status: true, updatedAt: true },
+    await updateItem(requestsListId, requestRecord.id, {
+      status: DRAFT_REVIEW_STATUS,
+      reviewerCommentText: comment,
+      reviewerDecisionCode: decisionCode,
+      reviewerCommentList: parsedCommentData.reviewerCommentList ?? null,
+      reviewerCommentTable: parsedCommentData.reviewerCommentTable ?? null,
+      review_x002d_comment_x002d_url: parsedCommentData.reviewerCommentUrls,
+      reviewedBy: user.name,
+      reviewedAt: new Date().toISOString(),
+      outcome: DRAFT_REVIEW_STATUS,
+      ...reviewConclusionFlags,
     });
+    const updated = {
+      id: (requestRecord.uuid ?? '').trim() || requestRecord.id,
+      status: DRAFT_REVIEW_STATUS,
+      updatedAt: new Date().toISOString(),
+    };
 
-    await notifyWorkingGcpcUsers(id, user.name).catch((emailError) => {
+    await notifyWorkingGcpcUsers(updated.id, user.name).catch((emailError) => {
       console.error('Working GCPC notification failed on Draft Review:', emailError);
     });
 

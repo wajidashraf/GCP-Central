@@ -48,7 +48,7 @@ type PersistedPccaState = {
   acknowledgement: boolean;
 };
 
-const PCCA_SESSION_STORAGE_KEY = "gcp-central:form:pcca:v1";
+const PCCA_SESSION_STORAGE_KEY = "gcp-central:form:pcca:v2";
 const MAX_FILE_SIZE_MB = PCCA_MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024);
 const acceptedDocumentTypes = PCCA_ALLOWED_DOCUMENT_MIME_TYPES.join(",");
 
@@ -237,6 +237,10 @@ export default function PccaMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", uploadFolder);
+      formData.set("requestType", requestType);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

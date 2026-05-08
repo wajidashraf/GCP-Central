@@ -54,7 +54,7 @@ type PersistedRpccaState = {
   acknowledgement: boolean;
 };
 
-const RPCCA_SESSION_STORAGE_KEY = "gcp-central:form:rpcca:v1";
+const RPCCA_SESSION_STORAGE_KEY = "gcp-central:form:rpcca:v2";
 const RPCCA_STEPS = [
   { id: "basic-information", label: "Basic Information" },
   { id: "project-details", label: "Project Details" },
@@ -163,6 +163,10 @@ export default function RpccaMultiStepForm({ channel, requestor, projects, canSu
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/rpcca");
+      formData.set("requestType", REVISED_PCCA_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {

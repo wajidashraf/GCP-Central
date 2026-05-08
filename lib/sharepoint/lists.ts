@@ -1,5 +1,6 @@
 import 'server-only';
 import { getGraphClient, getSiteId } from '@/lib/graph';
+import { SHAREPOINT_COMPANY_FIELDS } from '@/lib/sharepoint/constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -255,14 +256,14 @@ export async function createCompany(input: {
 }): Promise<SPCompany> {
   const companiesListId = getCompaniesListId();
   const fields: Record<string, unknown> = {
-    Title: input.companyName,
-    companyName: input.companyName,
-    companyCode: input.companyCode,
-    sector: input.sector,
+    [SHAREPOINT_COMPANY_FIELDS.title]: input.companyName,
+    [SHAREPOINT_COMPANY_FIELDS.companyName]: input.companyName,
+    [SHAREPOINT_COMPANY_FIELDS.companyCode]: input.companyCode,
+    [SHAREPOINT_COMPANY_FIELDS.sector]: input.sector,
   };
 
   if (input.guid) {
-    fields.uuid = input.guid;
+    fields[SHAREPOINT_COMPANY_FIELDS.uuid] = input.guid;
   }
 
   return createItem<SPCompany>(companiesListId, fields);

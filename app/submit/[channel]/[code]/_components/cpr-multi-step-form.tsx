@@ -86,6 +86,10 @@ export default function CprMultiStepForm({ channel, requestor, projects, canSubm
       const fd = new FormData();
       fd.set("file", file);
       fd.set("folder", "gcp-central/cpr");
+      fd.set("requestType", CPR_FORM_CODE);
+      if (requestId) {
+        fd.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: fd });
       const data = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) return setAlertState({ type: "error", message: "message" in data && data.message ? data.message : "Document upload failed." });

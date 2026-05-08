@@ -173,7 +173,7 @@ const documentMetadataSchema = submitPblRequestSchema.pick({
   documentMimeType: true,
   documentSizeBytes: true,
 });
-const PBL_SESSION_STORAGE_KEY = "gcp-central:form:pbl:v1";
+const PBL_SESSION_STORAGE_KEY = "gcp-central:form:pbl:v2";
 
 type PersistedPblFormState = {
   currentStep: number;
@@ -458,6 +458,8 @@ export default function PblMultiStepForm({
     const validatedBidder = pblBidderInputSchema.safeParse({
       ...bidderDraft,
       companyName: resolvedCompanyName,
+      customCompanyName: isOtherCompany ? bidderDraft.customCompanyName.trim() : "",
+      customSector: isOtherCompany ? resolvedSector : "",
     });
     if (!validatedBidder.success) {
       setBidderFieldErrors(flattenFieldErrors(validatedBidder.error));
@@ -650,6 +652,10 @@ export default function PblMultiStepForm({
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/pbl");
+      if (requestId) {
+        formData.set("requestType", "PBL");
+        formData.set("requestId", requestId);
+      }
 
       const response = await fetch("/api/uploads/cloudinary", {
         method: "POST",

@@ -193,6 +193,10 @@ export default function CiMultiStepForm({ channel, requestor, projects, canSubmi
       const formData = new FormData();
       formData.set("file", file);
       formData.set("folder", "gcp-central/ci");
+      formData.set("requestType", CI_FORM_CODE);
+      if (requestId) {
+        formData.set("requestId", requestId);
+      }
       const response = await fetch("/api/uploads/cloudinary", { method: "POST", body: formData });
       const responseData = (await response.json()) as UploadedAssetState | { message?: string };
       if (!response.ok) {
