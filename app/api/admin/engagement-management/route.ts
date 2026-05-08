@@ -96,7 +96,7 @@ export async function GET() {
     const requestById = new Map(requests.map((item: RequestListItem) => [item.id, item]));
     const slotById = new Map(slots.map((item: SlotListItem) => [item.id, item]));
 
-    const validEngagements = engagements.filter((engagement) => {
+    const validEngagements = engagements.filter((engagement: EngagementListItem) => {
       const hasRequest = requestById.has(engagement.requestId);
       const hasSlot = slotById.has(engagement.slotId);
       if (!hasRequest || !hasSlot) {
