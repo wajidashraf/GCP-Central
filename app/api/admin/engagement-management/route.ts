@@ -93,8 +93,8 @@ export async function GET() {
         : [],
     ]);
 
-    const requestById = new Map(requests.map((item: RequestListItem) => [item.id, item]));
-    const slotById = new Map(slots.map((item: SlotListItem) => [item.id, item]));
+    const requestById = new Map<string, RequestListItem>(requests.map((item: RequestListItem) => [item.id, item]));
+    const slotById = new Map<string, SlotListItem>(slots.map((item: SlotListItem) => [item.id, item]));
 
     const validEngagements = engagements.filter((engagement: EngagementListItem) => {
       const hasRequest = requestById.has(engagement.requestId);
@@ -141,8 +141,8 @@ export async function GET() {
         : [],
     ]);
 
-    const requestorById = new Map(requestors.map((userRow: UserListItem) => [userRow.id, userRow]));
-    const reviewerById = new Map(reviewers.map((userRow: UserListItem) => [userRow.id, userRow]));
+    const requestorById = new Map<string, UserListItem>(requestors.map((userRow: UserListItem) => [userRow.id, userRow]));
+    const reviewerById = new Map<string, UserListItem>(reviewers.map((userRow: UserListItem) => [userRow.id, userRow]));
 
     const payload = validEngagements.map((engagement: EngagementListItem) => {
       const request = requestById.get(engagement.requestId)!;
