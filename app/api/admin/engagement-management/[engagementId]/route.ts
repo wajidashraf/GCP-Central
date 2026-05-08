@@ -17,6 +17,17 @@ type ActionPayload =
   | { action: "reschedule"; slotId: string }
   | { action: "cancel" };
 
+type EmailRecipient = {
+  name: string;
+  email?: string;
+};
+
+type ReviewerContact = {
+  id: string;
+  name: string | null;
+  email: string | null;
+};
+
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -53,24 +64,24 @@ async function sendEngagementChangeEmails(options: {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const detailsUrl = `${appUrl}/requests/${requestId}`;
 
-  const reviewers = reviewerIds.length
+  const reviewers: ReviewerContact[] = reviewerIds.length
     ? await prisma.user.findMany({
         where: { id: { in: reviewerIds } },
         select: { id: true, name: true, email: true },
       })
     : [];
 
-  const recipients = [
+  const recipients: EmailRecipient[] = [
     {
       name: requestorName || "Requestor",
       email: requestorEmail.trim().toLowerCase(),
     },
     ...reviewers
-      .map((reviewer) => ({
+      .map((reviewer: ReviewerContact) => ({
         name: reviewer.name || "Reviewer",
         email: reviewer.email?.trim().toLowerCase(),
       }))
-      .filter((item) => Boolean(item.email)),
+      .filter((item: EmailRecipient) => Boolean(item.email)),
   ];
 
   const seen = new Set<string>();
