@@ -143,7 +143,7 @@ export async function POST(
       );
     }
 
-    const requestStatus = requestRecord.status.trim().toLowerCase();
+    const requestStatus = (requestRecord.status ?? '').trim().toLowerCase();
     const sourceRole =
       normalizedRequestedSourceRole ||
       (hasRole(user, 'working_gcpc') && !hasRole(user, 'reviewer') && requestStatus === DRAFT_REVIEW_STATUS

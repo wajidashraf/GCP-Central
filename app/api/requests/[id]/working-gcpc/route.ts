@@ -37,7 +37,7 @@ export async function POST(
       return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
-    if (requestRecord.status.trim().toLowerCase() !== 'r') {
+    if ((requestRecord.status ?? '').trim().toLowerCase() !== 'r') {
       return NextResponse.json(
         { error: 'Only requests in review can be marked as Pending Review' },
         { status: 400 }

@@ -117,7 +117,7 @@ export async function POST(
       return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
-    if (requestRecord.status.trim().toLowerCase() !== DRAFT_REVIEW_STATUS.toLowerCase()) {
+    if ((requestRecord.status ?? '').trim().toLowerCase() !== DRAFT_REVIEW_STATUS.toLowerCase()) {
       return NextResponse.json(
         { error: 'Only requests in Draft Review status can be moved to Pending Review' },
         { status: 400 }

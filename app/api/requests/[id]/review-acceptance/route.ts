@@ -95,7 +95,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: message }, { status: 403 });
     }
 
-    if (requestRecord.status.trim().toLowerCase() !== COMPLETE_REVIEW) {
+    if ((requestRecord.status ?? '').trim().toLowerCase() !== COMPLETE_REVIEW) {
       return NextResponse.json(
         { error: "Submission is only allowed while the request is in Complete Review" },
         { status: 400 }

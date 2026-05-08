@@ -60,7 +60,7 @@ export async function POST(
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    if (requestRecord.status.trim().toLowerCase() !== PENDING_REVIEW) {
+    if ((requestRecord.status ?? '').trim().toLowerCase() !== PENDING_REVIEW) {
       return NextResponse.json(
         { error: "Signatures can only be submitted while the request is Pending Review" },
         { status: 400 }
@@ -79,7 +79,7 @@ export async function POST(
       return NextResponse.json({ error: "You are not authorised to sign for this member" }, { status: 403 });
     }
 
-    const type = member.group.trim().toLowerCase();
+    const type = (member.group ?? '').trim().toLowerCase();
     if (type !== PREPARED && type !== CONFIRMED) {
       return NextResponse.json({ error: "Invalid signatory group configuration" }, { status: 500 });
     }
@@ -119,8 +119,8 @@ export async function POST(
         where: { requestId },
         select: { type: true },
       });
-      const preparedCount = sigRows.filter((s: SignatureRow) => s.type.trim().toLowerCase() === PREPARED).length;
-      const confirmedCount = sigRows.filter((s: SignatureRow) => s.type.trim().toLowerCase() === CONFIRMED).length;
+      const preparedCount = sigRows.filter((s: SignatureRow) => (s.type ?? '').trim().toLowerCase() === PREPARED).length;
+      const confirmedCount = sigRows.filter((s: SignatureRow) => (s.type ?? '').trim().toLowerCase() === CONFIRMED).length;
 
       if (
         preparedCount >= MIN_PREPARED_SIGS &&
