@@ -22,7 +22,6 @@ import { hasRole } from '@/src/lib/auth/has-role';
 
 const SLOT_STATUS_AVAILABLE = 'available';
 const ENGAGEMENT_STATUS_SCHEDULED = 'scheduled';
-const ENGAGEMENT_STATUS_COMPLETED = 'completed';
 const ENGAGEMENT_TYPES = ['virtual', 'in_person'] as const;
 const OTHER_LOCATION = 'Other';
 

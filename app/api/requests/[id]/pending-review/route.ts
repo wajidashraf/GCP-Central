@@ -6,7 +6,6 @@ import { sendEmail } from '@/lib/email/email-service';
 import { getCustomTemplate, htmlToPlainText } from '@/lib/email/email-templates';
 import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
-const WORKING_GCPC_ROLE = 'working_gcpc';
 const PENDING_REVIEW_STATUS = REQUEST_STATUS_MAP.PENDING_REVIEW.label;
 const DRAFT_REVIEW_STATUS = REQUEST_STATUS_MAP.DRAFT_REVIEW.label;
 

@@ -6,8 +6,6 @@ import {
   listItems,
   listCompanies,
   listUsers,
-  type SPCompany,
-  type SPUser,
   updateItem,
 } from "@/lib/sharepoint/lists";
 import { PROCUREMENT_METHODS } from "@/src/constants/enums";
@@ -372,12 +370,10 @@ export async function submitPblRequestInSharePoint(
 ): Promise<{ requestNo: string }> {
   const requestsListId = getRequestsListId();
   const pblRequestsListId = getPblRequestsListId();
-  const pblBiddersListId = getPblBiddersListId();
 
-  const [requests, pblItems, bidders] = await Promise.all([
+  const [requests, pblItems] = await Promise.all([
     listItems<RequestsListItem>(requestsListId),
     listItems<PblListItem & { justificationForLessBidders?: string }>(pblRequestsListId),
-    listItems<PblBidderListItem>(pblBiddersListId),
   ]);
 
   const request = requests.find((item) => item.uuid === payload.requestId);

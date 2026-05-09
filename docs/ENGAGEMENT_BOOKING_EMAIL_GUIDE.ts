@@ -79,6 +79,7 @@
 /**
  * Example 1: Virtual Engagement
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const exampleVirtualBooking = {
   slotId: "slot-456-789",
   name: "Virtual Planning Review",
@@ -89,6 +90,7 @@ const exampleVirtualBooking = {
 /**
  * Example 2: In-Person Engagement
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const exampleInPersonBooking = {
   slotId: "slot-456-789",
   name: "In-Person Meeting",
@@ -100,6 +102,7 @@ const exampleInPersonBooking = {
 /**
  * Example 3: In-Person with Custom Location
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const exampleCustomLocationBooking = {
   slotId: "slot-456-789",
   name: "Site Visit",

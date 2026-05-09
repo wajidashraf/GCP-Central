@@ -27,7 +27,8 @@ export default function RequestActionsSection({
   status,
   requestType,
   isSpecialProject = false,
-  reviewerSuggestionsCount = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  reviewerSuggestionsCount: _reviewerSuggestionsCount = 0,
   workingGcpcSuggestionsCount = 0,
   userRole,
   userRoles = [],
@@ -54,7 +55,6 @@ export default function RequestActionsSection({
   const canActAsReviewer = isAdmin || hasRole('reviewer');
   const canActAsWorkingGcpc = isAdmin || hasRole('working_gcpc');
   const canActAsRequestor = isAdmin || hasRole('requestor');
-  const isFrOrRs = normalizedStatus === 'fr' || normalizedStatus === 'rs';
   const canVerify = canActAsVerifier && normalizedStatus === 'new';
   const canVerifyRtp = canActAsVerifier && ['new', 'rs'].includes(normalizedStatus);
   const canReview = canActAsReviewer && normalizedStatus === 'r';

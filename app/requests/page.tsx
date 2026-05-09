@@ -7,6 +7,75 @@ import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import FilterBar from '@/src/components/requests/filterbar';
 
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+/** Shape shared by every form-type sub-list (PBL, PCCA, STSP, CAA, JVP …) */
+type SubListItem = {
+  id: string;
+  uuid?: string;
+  requestId?: string;
+  requestIdLookupId?: string | number;
+  requestIdId?: string | number;
+  requestIdLookup?: string | number;
+  projectId?: string;
+  projectCode?: string;
+  projectIdLookupId?: string | number;
+  projectIdId?: string | number;
+  projectIdLookup?: string | number;
+  projectName?: string;
+};
+
+// ─── Helper ─────────────────────────────────────────────────────────────────
+
+/**
+ * Build a Map<requestKey, projectName> from a sub-list (e.g. PCCA, STSP, CAA…).
+ *
+ * Each sub-list item carries the parent request's UUID in its own `uuid` field
+ * AND the request's SharePoint integer ID via `requestIdLookupId`. We key the
+ * map by BOTH values so the caller can resolve by either UUID or integer ID.
+ *
+ * Project name is resolved in priority order:
+ *   1. Projects list integer-ID lookup  (projectIdLookupId)
+ *   2. Projects list UUID lookup        (projectIdLookupId treated as uuid)
+ *   3. Projects list projectCode lookup (projectCode)
+ *   4. Inline projectName text field    (fallback for older records)
+ */
+function buildProjectNameMap(
+  items: SubListItem[],
+  projectNameById: Map<string, string | null>,
+  projectNameByUuid: Map<string, string | null>,
+  projectNameByCode: Map<string, string | null>,
+): Map<string, string> {
+  const result = new Map<string, string>();
+
+  for (const item of items) {
+    const requestUuid = (item.uuid ?? '').trim();
+    const requestLookupValue = String(
+      item.requestIdLookupId ?? item.requestIdId ?? item.requestIdLookup ?? item.requestId ?? ''
+    ).trim();
+
+    const projectIdValue = String(
+      item.projectIdLookupId ?? item.projectIdId ?? item.projectIdLookup ?? item.projectId ?? ''
+    ).trim();
+    const projectCodeValue = (item.projectCode ?? '').trim().toUpperCase();
+    const fallbackProjectName = (item.projectName ?? '').trim();
+
+    const projectName =
+      projectNameById.get(projectIdValue) ??
+      projectNameByUuid.get(projectIdValue) ??
+      projectNameByCode.get(projectCodeValue) ??
+      (fallbackProjectName.length > 0 ? fallbackProjectName : null);
+
+    const normalizedProjectName = projectName?.trim();
+    if (!normalizedProjectName) continue;
+
+    if (requestUuid) result.set(requestUuid, normalizedProjectName);
+    if (requestLookupValue) result.set(requestLookupValue, normalizedProjectName);
+  }
+
+  return result;
+}
+
 const STATUS_BADGE_CLASS_MAP: Record<string, string> = {
   Draft: 'badge--neutral',
   'Draft-Details': 'badge--neutral',
@@ -57,6 +126,8 @@ const ACTION_LABEL_MAP: Record<string, string> = {
   E: 'View',
 };
 
+const PAGE_SIZE = 10;
+
 type RequestsPageProps = {
   searchParams: Promise<{
     company?: string;
@@ -65,6 +136,7 @@ type RequestsPageProps = {
     type?: string;
     sortBy?: 'requestNo' | 'submitted';
     sortDir?: 'asc' | 'desc';
+    page?: string;
   }>;
 };
 
@@ -146,6 +218,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
   const selectedType = params.type?.trim() ?? '';
   const sortBy = params.sortBy === 'requestNo' || params.sortBy === 'submitted' ? params.sortBy : 'submitted';
   const sortDir = params.sortDir === 'asc' || params.sortDir === 'desc' ? params.sortDir : 'desc';
+  const currentPage = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
   const canCreateRequest = hasRole(currentUser, 'requestor');
   const canSeeBookEngagement =
     hasRole(currentUser, 'requestor') &&
@@ -164,7 +237,7 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
       throw new Error('REQUESTS_LIST_ID is not set in .env.local');
     }
 
-    const [requestItems, rtpItems, pblItems, pccaItems, rpccaItems, ppItems, rppItems, vapItems, othersItems, cprItems, ciItems, projectItems] = await Promise.all([
+    const [requestItems, rtpItems, pblItems, pccaItems, rpccaItems, ppItems, rppItems, vapItems, othersItems, cprItems, ciItems, stspItems, caaItems, jvpItems, projectItems] = await Promise.all([
       listItems<{
         id: string;
         uuid?: string;
@@ -183,150 +256,18 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
       process.env.RTP_REQUESTS_LIST_ID
         ? listItems<{ id: string; uuid?: string; projectName?: string }>(process.env.RTP_REQUESTS_LIST_ID)
         : Promise.resolve([]),
-      process.env.PBL_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.PBL_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.PCCA_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.PCCA_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.RPCCA_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.RPCCA_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.PP_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.PP_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.RPP_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.RPP_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.VAP_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.VAP_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.OTHERS_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.OTHERS_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.CPR_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.CPR_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
-      process.env.CI_REQUESTS_LIST_ID
-        ? listItems<{
-            id: string;
-            uuid?: string;
-            requestId?: string;
-            requestIdLookupId?: string | number;
-            requestIdId?: string | number;
-            requestIdLookup?: string | number;
-            projectId?: string;
-            projectCode?: string;
-            projectIdLookupId?: string | number;
-            projectIdId?: string | number;
-            projectIdLookup?: string | number;
-            projectName?: string;
-          }>(process.env.CI_REQUESTS_LIST_ID)
-        : Promise.resolve([]),
+      process.env.PBL_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.PBL_REQUESTS_LIST_ID)   : Promise.resolve([]),
+      process.env.PCCA_REQUESTS_LIST_ID  ? listItems<SubListItem>(process.env.PCCA_REQUESTS_LIST_ID)  : Promise.resolve([]),
+      process.env.RPCCA_REQUESTS_LIST_ID ? listItems<SubListItem>(process.env.RPCCA_REQUESTS_LIST_ID) : Promise.resolve([]),
+      process.env.PP_REQUESTS_LIST_ID    ? listItems<SubListItem>(process.env.PP_REQUESTS_LIST_ID)    : Promise.resolve([]),
+      process.env.RPP_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.RPP_REQUESTS_LIST_ID)   : Promise.resolve([]),
+      process.env.VAP_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.VAP_REQUESTS_LIST_ID)   : Promise.resolve([]),
+      process.env.OTHERS_REQUESTS_LIST_ID? listItems<SubListItem>(process.env.OTHERS_REQUESTS_LIST_ID): Promise.resolve([]),
+      process.env.CPR_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.CPR_REQUESTS_LIST_ID)   : Promise.resolve([]),
+      process.env.CI_REQUESTS_LIST_ID    ? listItems<SubListItem>(process.env.CI_REQUESTS_LIST_ID)    : Promise.resolve([]),
+      process.env.STSP_REQUESTS_LIST_ID  ? listItems<SubListItem>(process.env.STSP_REQUESTS_LIST_ID)  : Promise.resolve([]),
+      process.env.CAA_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.CAA_REQUESTS_LIST_ID)   : Promise.resolve([]),
+      process.env.JVP_REQUESTS_LIST_ID   ? listItems<SubListItem>(process.env.JVP_REQUESTS_LIST_ID)   : Promise.resolve([]),
       process.env.PROJECTS_LIST_ID
         ? listItems<{ id: string; uuid?: string; Title?: string; projectName?: string; projectCode?: string }>(process.env.PROJECTS_LIST_ID)
         : Promise.resolve([]),
@@ -343,282 +284,28 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     const projectNameByCode = new Map(
       projectItems
         .filter((project) => (project.projectCode ?? "").trim().length > 0)
-        .map((project) => [(project.projectCode ?? "").trim().toUpperCase(), project.projectName ?? null])
+        .map((project) => [(project.projectCode ?? "").trim().toUpperCase(), project.projectName ?? project.Title ?? null])
     );
+    // RTP stores projectName as a plain text field directly on the list item.
     const rtpProjectNameByRequestUuid = new Map(
       rtpItems
         .filter((item) => (item.uuid ?? '').trim() && (item.projectName ?? '').trim())
         .map((item) => [(item.uuid ?? '').trim(), (item.projectName ?? '').trim()])
     );
-    const pblProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of pblItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) pblProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) pblProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const pccaProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of pccaItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) pccaProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) pccaProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    for (const item of rpccaItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) pccaProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) pccaProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const ppProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of ppItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) ppProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) ppProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const rppProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of rppItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) rppProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) rppProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const vapProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of vapItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) vapProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) vapProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const othersProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of othersItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) othersProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) othersProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const cprProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of cprItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) cprProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) cprProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
-    const ciProjectNameByRequestUuid = new Map<string, string>();
-    for (const item of ciItems) {
-      const requestUuid = (item.uuid ?? '').trim();
-      const requestLookupValue = String(
-        item.requestIdLookupId ??
-          item.requestIdId ??
-          item.requestIdLookup ??
-          item.requestId ??
-          ""
-      ).trim();
-      const projectIdValue =
-        String(
-          item.projectIdLookupId ??
-          item.projectIdId ??
-          item.projectIdLookup ??
-          item.projectId ??
-          ""
-        ).trim();
-      const projectCodeValue = (item.projectCode ?? "").trim().toUpperCase();
-      const fallbackProjectName = (item.projectName ?? "").trim();
-      const projectName =
-        projectNameById.get(projectIdValue) ??
-        projectNameByUuid.get(projectIdValue) ??
-        projectNameByCode.get(projectCodeValue) ??
-        (fallbackProjectName.length > 0 ? fallbackProjectName : null);
-      const normalizedProjectName = projectName?.trim();
-      if (!normalizedProjectName) continue;
-      if (requestUuid) ciProjectNameByRequestUuid.set(requestUuid, normalizedProjectName);
-      if (requestLookupValue) ciProjectNameByRequestUuid.set(requestLookupValue, normalizedProjectName);
-    }
+
+    // Every other form type resolves the project name via projectIdLookupId → Projects list.
+    // R-PCCA entries are merged into the same PCCA map since they share the same lookup logic.
+    const pblProjectNameByRequestUuid    = buildProjectNameMap(pblItems,    projectNameById, projectNameByUuid, projectNameByCode);
+    const pccaProjectNameByRequestUuid   = buildProjectNameMap([...pccaItems, ...rpccaItems], projectNameById, projectNameByUuid, projectNameByCode);
+    const ppProjectNameByRequestUuid     = buildProjectNameMap(ppItems,     projectNameById, projectNameByUuid, projectNameByCode);
+    const rppProjectNameByRequestUuid    = buildProjectNameMap(rppItems,    projectNameById, projectNameByUuid, projectNameByCode);
+    const vapProjectNameByRequestUuid    = buildProjectNameMap(vapItems,    projectNameById, projectNameByUuid, projectNameByCode);
+    const othersProjectNameByRequestUuid = buildProjectNameMap(othersItems, projectNameById, projectNameByUuid, projectNameByCode);
+    const cprProjectNameByRequestUuid    = buildProjectNameMap(cprItems,    projectNameById, projectNameByUuid, projectNameByCode);
+    const ciProjectNameByRequestUuid     = buildProjectNameMap(ciItems,     projectNameById, projectNameByUuid, projectNameByCode);
+    const stspProjectNameByRequestUuid   = buildProjectNameMap(stspItems,   projectNameById, projectNameByUuid, projectNameByCode);
+    const caaProjectNameByRequestUuid    = buildProjectNameMap(caaItems,    projectNameById, projectNameByUuid, projectNameByCode);
+    const jvpProjectNameByRequestUuid    = buildProjectNameMap(jvpItems,    projectNameById, projectNameByUuid, projectNameByCode);
 
     baseVisibleRequests = requestItems
       .map((item) => {
@@ -626,29 +313,35 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
         const id = uuid || item.id;
         const createdAt = item.Created ? new Date(item.Created) : new Date();
         const submittedAt = item.submittedAt ? new Date(item.submittedAt) : null;
-        const projectName =
-          (uuid ? rtpProjectNameByRequestUuid.get(uuid) : null) ??
-          rtpProjectNameByRequestUuid.get(item.id) ??
-          pblProjectNameByRequestUuid.get(uuid) ??
-          pblProjectNameByRequestUuid.get(item.id) ??
-          pccaProjectNameByRequestUuid.get(uuid) ??
-          pccaProjectNameByRequestUuid.get(item.id) ??
-          ppProjectNameByRequestUuid.get(uuid) ??
-          ppProjectNameByRequestUuid.get(item.id) ??
-          rppProjectNameByRequestUuid.get(uuid) ??
-          rppProjectNameByRequestUuid.get(item.id) ??
-          vapProjectNameByRequestUuid.get(uuid) ??
-          vapProjectNameByRequestUuid.get(item.id) ??
-          othersProjectNameByRequestUuid.get(uuid) ??
-          othersProjectNameByRequestUuid.get(item.id) ??
-          cprProjectNameByRequestUuid.get(uuid) ??
-          cprProjectNameByRequestUuid.get(item.id) ??
-          ciProjectNameByRequestUuid.get(uuid) ??
-          ciProjectNameByRequestUuid.get(item.id) ??
-          projectNameById.get((item.projectId ?? '').trim()) ??
-          projectNameByUuid.get((item.projectId ?? '').trim()) ??
-          projectNameByCode.get((item.projectCode ?? '').trim().toUpperCase()) ??
-          null;
+        // Try every form-type sub-list map using the request UUID first, then its integer ID.
+        // Falls back to projectId / projectCode directly on the main request row.
+        const formTypeMaps = [
+          rtpProjectNameByRequestUuid,
+          pblProjectNameByRequestUuid,
+          pccaProjectNameByRequestUuid,
+          ppProjectNameByRequestUuid,
+          rppProjectNameByRequestUuid,
+          vapProjectNameByRequestUuid,
+          othersProjectNameByRequestUuid,
+          cprProjectNameByRequestUuid,
+          ciProjectNameByRequestUuid,
+          stspProjectNameByRequestUuid,
+          caaProjectNameByRequestUuid,
+          jvpProjectNameByRequestUuid,
+        ];
+        let projectName: string | null = null;
+        for (const map of formTypeMaps) {
+          const hit = (uuid ? map.get(uuid) : undefined) ?? map.get(item.id);
+          if (hit) { projectName = hit; break; }
+        }
+        if (!projectName) {
+          const pid = (item.projectId ?? '').trim();
+          projectName =
+            projectNameById.get(pid) ??
+            projectNameByUuid.get(pid) ??
+            projectNameByCode.get((item.projectCode ?? '').trim().toUpperCase()) ??
+            null;
+        }
         return {
           id,
           requestNo: (item.requestNo ?? '').trim(),
@@ -691,6 +384,13 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
     loadError = true;
   }
 
+  const totalRequests = visibleRequests.length;
+  const totalPages = Math.max(1, Math.ceil(totalRequests / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, totalRequests);
+  const pagedRequests = visibleRequests.slice(pageStart, pageEnd);
+
   const companyOptions: string[] = [
     ...new Set(baseVisibleRequests.map((item) => item.companyName).filter(Boolean)),
   ].sort();
@@ -713,18 +413,30 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
       ? [...projectOptions, selectedProject].sort((a, b) => a.localeCompare(b))
       : projectOptions;
 
-  const buildSortHref = (column: 'requestNo' | 'submitted') => {
-    const isCurrentColumn = sortBy === column;
-    const nextDir: 'asc' | 'desc' = isCurrentColumn ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
+  const buildHref = (overrides: Record<string, string | undefined>) => {
     const query = new URLSearchParams();
     if (selectedCompany) query.set('company', selectedCompany);
     if (selectedProject) query.set('project', selectedProject);
     if (selectedStatus) query.set('status', selectedStatus);
     if (selectedType) query.set('type', selectedType);
-    query.set('sortBy', column);
-    query.set('sortDir', nextDir);
+    query.set('sortBy', sortBy);
+    query.set('sortDir', sortDir);
+    if (safePage > 1) query.set('page', String(safePage));
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value === undefined || value === '') query.delete(key);
+      else query.set(key, value);
+    }
     return `/requests?${query.toString()}`;
   };
+
+  const buildSortHref = (column: 'requestNo' | 'submitted') => {
+    const isCurrentColumn = sortBy === column;
+    const nextDir: 'asc' | 'desc' = isCurrentColumn ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
+    return buildHref({ sortBy: column, sortDir: nextDir, page: undefined });
+  };
+
+  const prevHref = safePage > 1 ? buildHref({ page: String(safePage - 1) }) : null;
+  const nextHref = safePage < totalPages ? buildHref({ page: String(safePage + 1) }) : null;
 
   return (
     <div className="space-y-6">
@@ -762,78 +474,131 @@ export default async function RequestsPage({ searchParams }: RequestsPageProps) 
         sortDir={sortDir}
       />
 
-      <div className="table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>
-                <Link href={buildSortHref('requestNo')} className="inline-flex items-center gap-1 hover:underline">
-                  Request No
-                  {sortBy === 'requestNo' ? <span>{sortDir === 'asc' ? '↑' : '↓'}</span> : null}
-                </Link>
-              </th>
-              <th>Project Name</th>
-              <th>Type</th>
-              <th>Company</th>
-              <th>
-                <Link href={buildSortHref('submitted')} className="inline-flex items-center gap-1 hover:underline">
-                  Submitted
-                  {sortBy === 'submitted' ? <span>{sortDir === 'asc' ? '↑' : '↓'}</span> : null}
-                </Link>
-              </th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRequests.length > 0 ? (
-              visibleRequests.map((request) => {
-                const projectName = request.projectName ?? '—';
-                const typeWithChannel = `${request.requestType} - ${request.routingType}`;
+      {/* Table + pagination wrapper */}
+      <div className="space-y-3">
 
-                return (
-                  <tr key={request.id}>
-                    <td className="font-semibold text-[var(--text)]">{cleanRequestNo(request.requestNo)}</td>
-                    <td>{projectName}</td>
-                    <td>{typeWithChannel}</td>
-                    <td>{request.companyName}</td>
-                    <td>{formatRequestDate(request.submittedAt, request.createdAt)}</td>
-                    <td>
-                      <span className={`badge text-sm ${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
-                        {STATUS_DISPLAY_MAP[request.status] ?? request.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="grid w-full items-center gap-2">
-                        <Button href={`/requests/${request.id}`} variant="primary" size="sm" className="w-full flex-wrap">
-                          {getActionLabel(request.status)}
-                        </Button>
-                        {canSeeBookEngagement ? (
-                          <Button
-                            href={`/requests/${request.id}/book-engagement`}
-                            variant="accent"
-                            size="sm"
-                          >
-                            Book
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
+        {/* Row count summary */}
+        {totalRequests > 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">
+            Showing <span className="font-medium text-[var(--text)]">{pageStart + 1}–{pageEnd}</span> of{' '}
+            <span className="font-medium text-[var(--text)]">{totalRequests}</span> request{totalRequests !== 1 ? 's' : ''}
+          </p>
+        ) : null}
+
+        <div className="table-shell">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={8} className="py-10 text-center">
-                  <p className="text-sm font-semibold text-[var(--text)]">No requests found</p>
-                  <p className="mt-1 text-sm text-[var(--text-muted)]">
-                    Try adjusting filters, or create a new request.
-                  </p>
-                </td>
+                <th>
+                  <Link href={buildSortHref('requestNo')} className="inline-flex items-center gap-1 hover:underline">
+                    Request No
+                    {sortBy === 'requestNo' ? <span>{sortDir === 'asc' ? '↑' : '↓'}</span> : null}
+                  </Link>
+                </th>
+                <th>Project Name</th>
+                <th>Type</th>
+                <th>Company</th>
+                <th>
+                  <Link href={buildSortHref('submitted')} className="inline-flex items-center gap-1 hover:underline">
+                    Submitted
+                    {sortBy === 'submitted' ? <span>{sortDir === 'asc' ? '↑' : '↓'}</span> : null}
+                  </Link>
+                </th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pagedRequests.length > 0 ? (
+                pagedRequests.map((request) => {
+                  const projectName = request.projectName ?? '—';
+                  const typeWithChannel = `${request.requestType} - ${request.routingType}`;
+
+                  return (
+                    <tr key={request.id}>
+                      <td className="font-semibold text-[var(--text)]">{cleanRequestNo(request.requestNo)}</td>
+                      <td>{projectName}</td>
+                      <td>{typeWithChannel}</td>
+                      <td>{request.companyName}</td>
+                      <td>{formatRequestDate(request.submittedAt, request.createdAt)}</td>
+                      <td>
+                        <span className={`badge text-sm ${STATUS_BADGE_CLASS_MAP[request.status] ?? 'badge--neutral'}`}>
+                          {STATUS_DISPLAY_MAP[request.status] ?? request.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="grid w-full items-center gap-2">
+                          <Button href={`/requests/${request.id}`} variant="primary" size="sm" className="w-full flex-wrap">
+                            {getActionLabel(request.status)}
+                          </Button>
+                          {canSeeBookEngagement ? (
+                            <Button
+                              href={`/requests/${request.id}/book-engagement`}
+                              variant="accent"
+                              size="sm"
+                            >
+                              Book
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center">
+                    <p className="text-sm font-semibold text-[var(--text)]">No requests found</p>
+                    <p className="mt-1 text-sm text-[var(--text-muted)]">
+                      Try adjusting filters, or create a new request.
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination controls */}
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between gap-4 pt-1">
+            <span className="text-sm text-[var(--text-muted)]">
+              Page <span className="font-medium text-[var(--text)]">{safePage}</span> of{' '}
+              <span className="font-medium text-[var(--text)]">{totalPages}</span>
+            </span>
+
+            <div className="flex items-center gap-2">
+              {prevHref ? (
+                <Link
+                  href={prevHref}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
+                  aria-label="Previous page"
+                >
+                  ‹
+                </Link>
+              ) : (
+                <span className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-subtle)] opacity-40">
+                  ‹
+                </span>
+              )}
+
+              {nextHref ? (
+                <Link
+                  href={nextHref}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
+                  aria-label="Next page"
+                >
+                  ›
+                </Link>
+              ) : (
+                <span className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-subtle)] opacity-40">
+                  ›
+                </span>
+              )}
+            </div>
+          </div>
+        ) : null}
+
       </div>
     </div>
   );

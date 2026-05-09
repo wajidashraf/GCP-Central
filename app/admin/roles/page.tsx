@@ -190,7 +190,7 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
         </form>
         {query ? (
           <p className="text-xs text-[var(--text-subtle)]">
-            Showing {filteredUsers.length} of {totalUsers} users for "{q}".
+            Showing {filteredUsers.length} of {totalUsers} users for &quot;{q}&quot;.
           </p>
         ) : null}
       </div>

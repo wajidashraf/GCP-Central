@@ -20,11 +20,25 @@ function readCredentialValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+const isProd = process.env.NODE_ENV === 'production';
+
 export const authConfig = {
   trustHost: true,
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  cookies: {
+    sessionToken: {
+      name: isProd ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax' as const,
+        path: '/',
+        secure: isProd,
+      },
+    },
   },
   providers: [
     Credentials({

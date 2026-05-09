@@ -12,11 +12,11 @@
  * node -r dotenv/config lib/email/verify-email.js dotenv_config_path=.env.local
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { env } from '@/lib/env';
 import { verifyEmailConfig } from '@/lib/email/email-service';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     console.log('\n' + '='.repeat(70));
     console.log('EMAIL CONFIGURATION VERIFICATION');

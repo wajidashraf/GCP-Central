@@ -485,6 +485,7 @@ export default function JvpMultiStepForm({
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function removeUploadedAsset(
     asset: UploadedAssetState | null,
     onRemoved: () => void

@@ -4,7 +4,6 @@ import { hasRole } from '@/src/lib/auth/has-role';
 import { REQUEST_STATUS_MAP } from '@/src/constants/enums/requestStatus';
 import { listItems, updateItem } from '@/lib/sharepoint/lists';
 
-const WORKING_GCPC_ROLE = 'working_gcpc';
 const PENDING_REVIEW_STATUS = REQUEST_STATUS_MAP.PENDING_REVIEW.label;
 
 export async function POST(
