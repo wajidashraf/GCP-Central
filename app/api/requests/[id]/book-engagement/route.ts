@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { getCurrentUser } from '@/src/lib/auth/get-current-user';
-import { hasRole } from '@/src/lib/auth/has-role';
 import { sendEmail } from '@/lib/email/email-service';
 import {
   getEngagementBookingTemplate,
   htmlToPlainText,
 } from '@/lib/email/email-templates';
+import {
+  buildBookingEngagementPayload,
+  createEngagementRecord,
+  findRequestByUuid,
+  findScheduledEngagementForRequest,
+  generateEngagementNumber,
+  getEngagementSlotById,
+  getUsersByIds,
+  parseSlotAttendeesJson,
+  releaseSlot,
+  tryLockSlot,
+  updateRequestStatusByItemId,
+} from '@/lib/sharepoint/engagements';
+import { getCurrentUser } from '@/src/lib/auth/get-current-user';
+import { hasRole } from '@/src/lib/auth/has-role';
 
 const SLOT_STATUS_AVAILABLE = 'available';
-const SLOT_STATUS_BOOKED = 'booked';
 const ENGAGEMENT_STATUS_SCHEDULED = 'scheduled';
 const ENGAGEMENT_STATUS_COMPLETED = 'completed';
 const ENGAGEMENT_TYPES = ['virtual', 'in_person'] as const;
@@ -17,86 +28,67 @@ const OTHER_LOCATION = 'Other';
 
 type EngagementType = (typeof ENGAGEMENT_TYPES)[number];
 
-async function generateEngagementNumber(requestId: string) {
-  const completedCount = await prisma.engagement.count({
-    where: {
-      requestId,
-      status: ENGAGEMENT_STATUS_COMPLETED,
-    },
-  });
-
-  return `R${String(completedCount + 1).padStart(2, '0')}`;
+function userCanAccessRequest(
+  user: { id: string; email: string },
+  requestRow: NonNullable<Awaited<ReturnType<typeof findRequestByUuid>>>,
+  isAdmin: boolean
+): boolean {
+  if (isAdmin) return true;
+  const lookup = requestRow.requestorIdLookupId;
+  if (lookup !== undefined && lookup !== null) {
+    return String(lookup) === String(user.id);
+  }
+  const userEmail = user.email.trim().toLowerCase();
+  const rowEmail = (requestRow.requestorEmail ?? '').trim().toLowerCase();
+  return Boolean(userEmail && rowEmail && userEmail === rowEmail);
 }
 
-/**
- * Send engagement booking notifications to all slot attendees
- */
-async function sendEngagementNotifications(
-  engagement: any,
-  requestId: string,
-  slotId: string,
-  engagementName: string,
-  engagementType: EngagementType,
-  engagementLocation: string | null
-) {
-  try {
-    // Fetch engagement slot with attendees
-    const slot = await prisma.engagementSlot.findUnique({
-      where: { id: slotId },
-      select: {
-        attendees: true,
-        startTime: true,
-        endTime: true,
-      },
-    });
+async function sendEngagementNotifications(options: {
+  requestorUserId: string;
+  requestUuid: string;
+  slotId: string;
+  engagementType: EngagementType;
+  engagementLocation: string | null;
+}) {
+  const { requestorUserId, requestUuid, slotId, engagementType, engagementLocation } = options;
 
-    if (!slot || !slot.attendees || slot.attendees.length === 0) {
+  try {
+    const slot = await getEngagementSlotById(slotId);
+
+    if (!slot) {
+      console.log('No slot found:', slotId);
+      return;
+    }
+
+    const attendeeIds = parseSlotAttendeesJson(slot.attendees);
+    if (attendeeIds.length === 0) {
       console.log('No attendees found for slot:', slotId);
       return;
     }
 
-    // Fetch request details
-    const request = await prisma.request.findUnique({
-      where: { id: requestId },
-      select: {
-        requestNo: true,
-        requestTitle: true,
-        requestType: true,
-        requestorName: true,
-        companyName: true,
-      },
-    });
+    const request = await findRequestByUuid(requestUuid);
 
     if (!request) {
-      console.error('Request not found:', requestId);
+      console.error('Request not found:', requestUuid);
       return;
     }
 
-    // Fetch requestor user details (for name and reply-to)
-    const requestor = await prisma.user.findUnique({
-      where: { id: engagement.requestorId },
-      select: { name: true, email: true },
-    });
+    const requestors = requestorUserId
+      ? await getUsersByIds([requestorUserId.trim()])
+      : [];
+    const requestor = requestors[0];
 
-    type AttendeeUser = {
-      id: string;
-      name: string | null;
-      email: string | null;
-    };
-
-    // slot.attendees contains user IDs — look up their actual email addresses
-    const attendeeUsers = await prisma.user.findMany({
-      where: { id: { in: slot.attendees } },
-      select: { id: true, name: true, email: true },
-    });
+    const attendeeUsers = await getUsersByIds(attendeeIds);
 
     if (attendeeUsers.length === 0) {
       console.warn('Could not resolve any attendee emails for slot:', slotId);
       return;
     }
 
-    const resolvedAttendeeIds = new Set(attendeeUsers.map((attendee: AttendeeUser) => attendee.id));
-    const unresolvedAttendeeIds = slot.attendees.filter((attendeeId: string) => !resolvedAttendeeIds.has(attendeeId));
+    const resolvedAttendeeIds = new Set(attendeeUsers.map((attendee) => attendee.id));
+    const unresolvedAttendeeIds = attendeeIds.filter(
+      (attendeeId: string) => !resolvedAttendeeIds.has(attendeeId)
+    );
     if (unresolvedAttendeeIds.length > 0) {
       console.warn('Some slot attendee IDs could not be resolved to users:', {
         slotId,
@@ -104,10 +96,12 @@ async function sendEngagementNotifications(
       });
     }
 
-    const requestorName = requestor?.name || request.requestorName;
-    const engagementUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestId}`;
+    const requestorName = requestor?.Title || request.requestorName;
+    const engagementUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/requests/${requestUuid}`;
 
-    // Send email to each resolved attendee
+    const startTime = slot.startTime ? new Date(slot.startTime) : new Date();
+    const endTime = slot.endTime ? new Date(slot.endTime) : new Date();
+
     for (const attendee of attendeeUsers) {
       try {
         const attendeeEmail = attendee.email?.trim().toLowerCase();
@@ -117,23 +111,23 @@ async function sendEngagementNotifications(
         }
 
         const html = getEngagementBookingTemplate(
-          attendee.name || 'Attendee',
-          requestorName,
-          request.companyName,
+          attendee.Title || 'Attendee',
+          requestorName ?? '',
+          request.companyName ?? '',
           engagementType,
           engagementLocation,
-          request.requestNo,
-          request.requestTitle,
-          request.requestType,
-          slot.startTime,
-          slot.endTime,
+          request.requestNo ?? '',
+          request.requestTitle ?? '',
+          request.requestType ?? '',
+          startTime,
+          endTime,
           engagementUrl,
           'GCP Central'
         );
 
         const emailResult = await sendEmail({
           to: attendeeEmail,
-          subject: `Engagement Scheduled: ${request.requestNo} - ${requestorName}`,
+          subject: `Engagement Scheduled: ${request.requestNo ?? ''} - ${requestorName}`,
           html,
           text: htmlToPlainText(html),
           replyTo: requestor?.email || undefined,
@@ -152,18 +146,13 @@ async function sendEngagementNotifications(
           attendeeId: attendee.id,
           attendeeEmail,
           messageId: emailResult.messageId,
-          accepted: emailResult.accepted,
-          rejected: emailResult.rejected,
-          response: emailResult.response,
         });
       } catch (error) {
         console.error(`Failed to send email to attendee ${attendee.id}:`, error);
-        // Continue sending to other attendees even if one fails
       }
     }
   } catch (error) {
     console.error('Error in sendEngagementNotifications:', error);
-    // Don't throw - this shouldn't break the booking process
   }
 }
 
@@ -193,7 +182,7 @@ export async function POST(
       );
     }
 
-    const { id } = await params;
+    const { id: requestUuid } = await params;
     const body = await request.json();
     const slotId = normalizeString(body.slotId);
     const name = normalizeString(body.name);
@@ -203,17 +192,11 @@ export async function POST(
     const notes = normalizeString(body.notes);
 
     if (!slotId) {
-      return NextResponse.json(
-        { error: 'Slot ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Slot ID is required' }, { status: 400 });
     }
 
     if (!name) {
-      return NextResponse.json(
-        { error: 'Engagement name is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Engagement name is required' }, { status: 400 });
     }
 
     if (!ENGAGEMENT_TYPES.includes(type)) {
@@ -231,57 +214,47 @@ export async function POST(
       );
     }
 
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: { requestorId: true },
-    });
+    const requestRow = await findRequestByUuid(requestUuid);
 
-    if (!requestRecord) {
-      return NextResponse.json(
-        { error: 'Request not found' },
-        { status: 404 }
-      );
+    if (!requestRow) {
+      return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
     const isAdmin = hasRole(user, 'admin');
-    if (!isAdmin && requestRecord.requestorId !== user.id) {
+    if (!userCanAccessRequest(user, requestRow, isAdmin)) {
       return NextResponse.json(
         { error: 'You can only book engagements for your own requests' },
         { status: 403 }
       );
     }
 
-    const slot = await prisma.engagementSlot.findUnique({
-      where: { id: slotId },
-      select: { id: true, startTime: true, status: true },
-    });
+    const slot = await getEngagementSlotById(slotId);
 
     if (!slot) {
-      return NextResponse.json(
-        { error: 'Slot not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Slot not found' }, { status: 404 });
     }
 
-    if (slot.startTime < new Date()) {
+    const startTime = slot.startTime ? new Date(slot.startTime) : null;
+    if (!startTime || Number.isNaN(startTime.getTime())) {
+      return NextResponse.json({ error: 'Slot has no valid start time' }, { status: 400 });
+    }
+
+    if (startTime < new Date()) {
       return NextResponse.json(
         { error: 'This slot is in the past. Please choose another slot.' },
         { status: 400 }
       );
     }
 
-    if (slot.status && slot.status !== SLOT_STATUS_AVAILABLE) {
+    const slotStatus = (slot.status ?? SLOT_STATUS_AVAILABLE).toLowerCase();
+    if (slotStatus && slotStatus !== SLOT_STATUS_AVAILABLE) {
       return NextResponse.json(
         { error: 'This slot is no longer available. Please choose another slot.' },
         { status: 409 }
       );
     }
 
-    // Block if there is already an active scheduled engagement for this request.
-    const existingScheduled = await prisma.engagement.findFirst({
-      where: { requestId: id, status: ENGAGEMENT_STATUS_SCHEDULED },
-      select: { id: true },
-    });
+    const existingScheduled = await findScheduledEngagementForRequest(requestUuid);
 
     if (existingScheduled) {
       return NextResponse.json(
@@ -290,78 +263,54 @@ export async function POST(
       );
     }
 
-    // Atomically lock the slot: only succeeds if it is still available and in the future.
-    const lockedSlot = await prisma.engagementSlot.updateMany({
-      where: {
-        id: slotId,
-        startTime: { gte: new Date() },
-        OR: [
-          { status: SLOT_STATUS_AVAILABLE },
-          { status: null },
-        ],
-      },
-      data: { status: SLOT_STATUS_BOOKED },
-    });
+    const locked = await tryLockSlot(slotId);
 
-    if (lockedSlot.count !== 1) {
+    if (!locked) {
       return NextResponse.json(
         { error: 'This slot is no longer available. Please choose another slot.' },
         { status: 409 }
       );
     }
 
-    // Create engagement; if it fails, release the slot lock.
-    let engagement;
     try {
-      const engagementNumber = await generateEngagementNumber(id);
+      const engagementNumber = await generateEngagementNumber(requestUuid);
 
-      engagement = await prisma.engagement.create({
-        data: {
-          requestId: id,
-          slotId,
-          requestorId: user.id,
-          engagementNumber,
-          name,
-          type,
-          location: type === 'in_person' ? selectedLocation : null,
-          notes: notes || null,
-          status: ENGAGEMENT_STATUS_SCHEDULED,
-        },
+      const engagementRow = await createEngagementRecord({
+        requestUuid,
+        slotItemId: slotId,
+        requestorUserId: user.id,
+        engagementNumber,
+        name,
+        type,
+        location: type === 'in_person' ? selectedLocation : null,
+        notes: notes || null,
+        status: ENGAGEMENT_STATUS_SCHEDULED,
       });
 
-      await prisma.request.update({
-        where: { id },
-        data: { status: 'R' },
-      });
+      await updateRequestStatusByItemId(requestRow.id, 'R');
 
-      // Send email notifications to slot attendees
       try {
-        await sendEngagementNotifications(
-          engagement,
-          id,
+        await sendEngagementNotifications({
+          requestorUserId: user.id,
+          requestUuid,
           slotId,
-          name,
-          type,
-          selectedLocation || null
-        );
+          engagementType: type,
+          engagementLocation: selectedLocation || null,
+        });
       } catch (emailError) {
         console.error('Failed to send engagement notifications:', emailError);
-        // Don't fail the entire request if email fails
       }
+
+      return NextResponse.json(engagementRow, { status: 201 });
     } catch (innerError) {
-      await prisma.engagementSlot
-        .update({ where: { id: slotId }, data: { status: SLOT_STATUS_AVAILABLE } })
-        .catch((e) => console.error('Failed to release slot lock:', e));
+      await releaseSlot(slotId).catch((e) =>
+        console.error('Failed to release slot lock:', e)
+      );
       throw innerError;
     }
-
-    return NextResponse.json(engagement, { status: 201 });
   } catch (error) {
     console.error('POST /book-engagement error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -378,51 +327,43 @@ export async function GET(
       );
     }
 
-    const { id } = await params;
+    const { id: requestUuid } = await params;
 
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: {
-        requestNo: true,
-        requestTitle: true,
-        requestorId: true,
-      },
-    });
+    const requestRecord = await findRequestByUuid(requestUuid);
 
     if (!requestRecord) {
-      return NextResponse.json(
-        { error: 'Request not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
     const isAdmin = hasRole(user, 'admin');
-    if (!isAdmin && requestRecord.requestorId !== user.id) {
+    if (!userCanAccessRequest(user, requestRecord, isAdmin)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const engagement = await prisma.engagement.findFirst({
-      where: {
-        requestId: id,
-        status: ENGAGEMENT_STATUS_SCHEDULED,
-      },
-      include: { slot: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const engagementRow = await findScheduledEngagementForRequest(requestUuid);
+
+    let activeEngagement: ReturnType<typeof buildBookingEngagementPayload> | null = null;
+
+    if (engagementRow?.slotItemId) {
+      const slot = await getEngagementSlotById(engagementRow.slotItemId);
+      if (slot) {
+        activeEngagement = buildBookingEngagementPayload(engagementRow, slot);
+      }
+    }
+
+    const nextEngagementNumber = await generateEngagementNumber(requestUuid);
 
     return NextResponse.json({
       request: {
-        requestNo: requestRecord.requestNo,
-        requestTitle: requestRecord.requestTitle,
+        requestNo: requestRecord.requestNo ?? '',
+        requestTitle: requestRecord.requestTitle ?? '',
       },
-      nextEngagementNumber: await generateEngagementNumber(id),
-      activeEngagement: engagement,
+      nextEngagementNumber,
+      activeEngagement,
+      existingEngagement: activeEngagement,
     });
   } catch (error) {
     console.error('GET /book-engagement error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

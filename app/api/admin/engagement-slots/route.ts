@@ -1,15 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { randomUUID } from 'crypto';
+import { createItem, listItems, listUsers, parseRoles } from '@/lib/sharepoint/lists';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 
+type EngagementSlotListItem = {
+  id: string;
+  slotName?: string;
+  startTime?: string;
+  endTime?: string;
+  attendees?: string;
+  status?: 'available' | 'booked' | null;
+  createdAt?: string;
+  uuid?: string;
+};
+
+function getEngagementSlotsListId() {
+  const listId = process.env.ENGAGEMENT_SLOTS_LIST_ID;
+  if (!listId) {
+    throw new Error('ENGAGEMENT_SLOTS_LIST_ID is not set in .env.local');
+  }
+  return listId;
+}
+
+function parseAttendees(value: string | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
+  } catch {
+    return [];
+  }
+}
+
 export async function GET() {
   try {
-    const slots = await prisma.engagementSlot.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+    const slots = await listItems<EngagementSlotListItem>(getEngagementSlotsListId());
+    const payload = slots
+      .map((slot) => ({
+        id: slot.id,
+        slotName: slot.slotName ?? '',
+        startTime: slot.startTime ?? null,
+        endTime: slot.endTime ?? null,
+        attendees: parseAttendees(slot.attendees),
+        status: slot.status ?? 'available',
+        createdAt: slot.createdAt ?? slot.startTime ?? null,
+        uuid: slot.uuid ?? null,
+      }))
+      .sort((left, right) => {
+        const leftDate = new Date(left.createdAt ?? 0).getTime();
+        const rightDate = new Date(right.createdAt ?? 0).getTime();
+        return rightDate - leftDate;
+      });
 
-    return NextResponse.json(slots);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('Error fetching slots:', error);
     return NextResponse.json(
@@ -76,13 +121,13 @@ export async function POST(request: NextRequest) {
 
     // Validate that attendees have reviewer role
     if (attendeeIds.length > 0) {
-      const reviewers = await prisma.user.findMany({
-        where: {
-          id: { in: attendeeIds },
-          roles: { has: 'reviewer' },
-        },
-        select: { id: true },
-      });
+      const users = await listUsers();
+      const reviewerIds = new Set(
+        users
+          .filter((item) => parseRoles(item.roles).includes('reviewer'))
+          .map((item) => item.id)
+      );
+      const reviewers = attendeeIds.filter((id) => reviewerIds.has(id));
 
       if (reviewers.length !== attendeeIds.length) {
         return NextResponse.json(
@@ -92,17 +137,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const slot = await prisma.engagementSlot.create({
-      data: {
-        slotName: normalizedSlotName,
-        startTime: parsedStartTime,
-        endTime: parsedEndTime,
-        attendees: attendeeIds,
-        createdBy: user.id,
-      },
+    const slot = await createItem<EngagementSlotListItem>(getEngagementSlotsListId(), {
+      Title: normalizedSlotName,
+      uuid: randomUUID(),
+      slotName: normalizedSlotName,
+      startTime: parsedStartTime.toISOString(),
+      endTime: parsedEndTime.toISOString(),
+      attendees: JSON.stringify(attendeeIds),
+      status: 'available',
+      createdBy: user.id,
+      createdAt: new Date().toISOString(),
     });
 
-    return NextResponse.json(slot, { status: 201 });
+    return NextResponse.json(
+      {
+        ...slot,
+        attendees: parseAttendees(slot.attendees),
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating slot:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';

@@ -45,8 +45,15 @@ function getTransporter(): nodemailer.Transporter {
 
   // Gmail configuration
   if (env.EMAIL_SERVICE === "gmail") {
+    const secure = env.EMAIL_PORT === 465;
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: env.EMAIL_PORT,
+      secure,
+      requireTLS: !secure,
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 20_000,
       auth: {
         user: env.EMAIL_USER,
         pass: env.EMAIL_PASSWORD, // Use Gmail App Password, not regular password

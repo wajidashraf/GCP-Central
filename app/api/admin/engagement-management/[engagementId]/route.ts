@@ -1,15 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/email-service";
 import {
   getEngagementStatusUpdateTemplate,
   htmlToPlainText,
 } from "@/lib/email/email-templates";
+import {
+  findRequestByUuid,
+  getRequestByItemId,
+  getEngagementById,
+  getEngagementSlotById,
+  getUsersByIds,
+  parseSlotAttendeesJson,
+  releaseSlot,
+  tryLockSlot,
+  updateEngagementRecord,
+  updateRequestStatusByItemId,
+} from "@/lib/sharepoint/engagements";
 import { getCurrentUser } from "@/src/lib/auth/get-current-user";
 import { hasRole } from "@/src/lib/auth/has-role";
 
 const SLOT_STATUS_AVAILABLE = "available";
-const SLOT_STATUS_BOOKED = "booked";
 const ENGAGEMENT_STATUS_CANCELLED = "cancelled";
 const ENGAGEMENT_STATUS_RESCHEDULED = "Re-Schedule";
 
@@ -20,12 +30,6 @@ type ActionPayload =
 type EmailRecipient = {
   name: string;
   email?: string;
-};
-
-type ReviewerContact = {
-  id: string;
-  name: string | null;
-  email: string | null;
 };
 
 type EmailRecipientWithEmail = {
@@ -39,7 +43,7 @@ function normalizeString(value: unknown) {
 
 async function sendEngagementChangeEmails(options: {
   changeType: "updated" | "cancelled";
-  requestId: string;
+  requestRouteId: string;
   requestNo: string;
   requestTitle: string;
   requestorName: string;
@@ -53,7 +57,7 @@ async function sendEngagementChangeEmails(options: {
 }) {
   const {
     changeType,
-    requestId,
+    requestRouteId,
     requestNo,
     requestTitle,
     requestorName,
@@ -67,26 +71,19 @@ async function sendEngagementChangeEmails(options: {
   } = options;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const detailsUrl = `${appUrl}/requests/${requestId}`;
+  const detailsUrl = `${appUrl}/requests/${requestRouteId}`;
 
-  const reviewers: ReviewerContact[] = reviewerIds.length
-    ? await prisma.user.findMany({
-        where: { id: { in: reviewerIds } },
-        select: { id: true, name: true, email: true },
-      })
-    : [];
+  const reviewerUsers = reviewerIds.length ? await getUsersByIds(reviewerIds) : [];
 
   const recipients: EmailRecipient[] = [
     {
       name: requestorName || "Requestor",
       email: requestorEmail.trim().toLowerCase(),
     },
-    ...reviewers
-      .map((reviewer: ReviewerContact) => ({
-        name: reviewer.name || "Reviewer",
-        email: reviewer.email?.trim().toLowerCase(),
-      }))
-      .filter((item: EmailRecipient) => Boolean(item.email)),
+    ...reviewerUsers.map((reviewer) => ({
+      name: reviewer.Title || "Reviewer",
+      email: reviewer.email?.trim().toLowerCase(),
+    })),
   ];
 
   const seen = new Set<string>();
@@ -147,32 +144,23 @@ export async function PATCH(
     const payload = (await request.json()) as Partial<ActionPayload>;
     const action = normalizeString(payload.action);
 
-    const engagement = await prisma.engagement.findUnique({
-      where: { id: engagementId },
-      include: {
-        request: {
-          select: {
-            id: true,
-            requestNo: true,
-            requestTitle: true,
-            requestorName: true,
-            requestorEmail: true,
-          },
-        },
-        slot: {
-          select: {
-            id: true,
-            attendees: true,
-            startTime: true,
-            endTime: true,
-          },
-        },
-      },
-    });
+    const engagement = await getEngagementById(engagementId);
 
-    if (!engagement) {
+    if (!engagement?.slotItemId) {
       return NextResponse.json({ error: "Engagement not found" }, { status: 404 });
     }
+
+    const requestRow = engagement.requestIdLookupId
+      ? await getRequestByItemId(String(engagement.requestIdLookupId).trim())
+      : engagement.requestUuid
+      ? await findRequestByUuid(engagement.requestUuid.trim())
+      : null;
+    if (!requestRow) {
+      return NextResponse.json({ error: "Related request not found" }, { status: 404 });
+    }
+    const requestRouteId = (requestRow.uuid ?? "").trim() || requestRow.id;
+
+    const oldSlot = await getEngagementSlotById(engagement.slotItemId.trim());
 
     if (action === "reschedule") {
       const slotId = normalizeString((payload as { slotId?: string }).slotId);
@@ -180,118 +168,104 @@ export async function PATCH(
         return NextResponse.json({ error: "New slot is required for reschedule" }, { status: 400 });
       }
 
-      if (slotId === engagement.slotId) {
+      if (slotId === engagement.slotItemId) {
         return NextResponse.json({ error: "Please select a different slot" }, { status: 400 });
       }
 
-      const targetSlot = await prisma.engagementSlot.findUnique({
-        where: { id: slotId },
-        select: { id: true, startTime: true, endTime: true, status: true, attendees: true },
-      });
+      const targetSlot = await getEngagementSlotById(slotId);
 
       if (!targetSlot) {
         return NextResponse.json({ error: "Selected slot not found" }, { status: 404 });
       }
 
-      if (targetSlot.startTime < new Date()) {
+      const targetStart = targetSlot.startTime ? new Date(targetSlot.startTime) : null;
+      if (!targetStart || targetStart < new Date()) {
         return NextResponse.json({ error: "Cannot move engagement to a past slot" }, { status: 400 });
       }
 
-      if (targetSlot.status && targetSlot.status !== SLOT_STATUS_AVAILABLE) {
+      const ts = (targetSlot.status ?? SLOT_STATUS_AVAILABLE).toLowerCase();
+      if (ts && ts !== SLOT_STATUS_AVAILABLE) {
         return NextResponse.json({ error: "Selected slot is not available" }, { status: 409 });
       }
 
-      const locked = await prisma.engagementSlot.updateMany({
-        where: {
-          id: slotId,
-          startTime: { gte: new Date() },
-          OR: [{ status: SLOT_STATUS_AVAILABLE }, { status: null }],
-        },
-        data: { status: SLOT_STATUS_BOOKED },
-      });
+      const locked = await tryLockSlot(slotId);
 
-      if (locked.count !== 1) {
+      if (!locked) {
         return NextResponse.json({ error: "Selected slot is no longer available" }, { status: 409 });
       }
 
       try {
-        const updated = await prisma.engagement.update({
-          where: { id: engagementId },
-          data: { slotId, status: ENGAGEMENT_STATUS_RESCHEDULED },
-          include: { slot: true },
+        await updateEngagementRecord(engagementId, {
+          slotItemId: slotId,
+          status: ENGAGEMENT_STATUS_RESCHEDULED,
         });
 
-        await prisma.engagementSlot.update({
-          where: { id: engagement.slotId },
-          data: { status: SLOT_STATUS_AVAILABLE },
-        });
+        if (engagement.slotItemId) {
+          await releaseSlot(engagement.slotItemId.trim());
+        }
 
-        const reviewerIds = Array.from(
-          new Set([...(engagement.slot.attendees ?? []), ...(targetSlot.attendees ?? [])])
-        );
+        const oldAttendees = oldSlot ? parseSlotAttendeesJson(oldSlot.attendees) : [];
+        const newAttendees = parseSlotAttendeesJson(targetSlot.attendees);
+        const reviewerIds = Array.from(new Set([...oldAttendees, ...newAttendees]));
 
         await sendEngagementChangeEmails({
           changeType: "updated",
-          requestId: engagement.request.id,
-          requestNo: engagement.request.requestNo,
-          requestTitle: engagement.request.requestTitle,
-          requestorName: engagement.request.requestorName,
-          requestorEmail: engagement.request.requestorEmail,
+          requestRouteId,
+          requestNo: requestRow.requestNo ?? "",
+          requestTitle: requestRow.requestTitle ?? "",
+          requestorName: requestRow.requestorName ?? "",
+          requestorEmail: requestRow.requestorEmail ?? "",
           engagementName: engagement.name || "Engagement",
-          engagementType: engagement.type,
-          engagementLocation: engagement.location,
-          slotStartTime: targetSlot.startTime,
-          slotEndTime: targetSlot.endTime,
+          engagementType: engagement.type ?? null,
+          engagementLocation: engagement.location ?? null,
+          slotStartTime: targetStart,
+          slotEndTime: targetSlot.endTime ? new Date(targetSlot.endTime) : null,
           reviewerIds,
         });
 
+        const updated = await getEngagementById(engagementId);
         return NextResponse.json(updated);
       } catch (innerError) {
-        await prisma.engagementSlot
-          .update({ where: { id: slotId }, data: { status: SLOT_STATUS_AVAILABLE } })
-          .catch((unlockError) => {
-            console.error("Failed to release newly locked slot:", unlockError);
-          });
+        await releaseSlot(slotId).catch((unlockError) => {
+          console.error("Failed to release newly locked slot:", unlockError);
+        });
         throw innerError;
       }
     }
 
     if (action === "cancel") {
-      if (engagement.status === ENGAGEMENT_STATUS_CANCELLED) {
+      if ((engagement.status ?? "").toLowerCase() === ENGAGEMENT_STATUS_CANCELLED) {
         return NextResponse.json({ error: "Engagement already cancelled" }, { status: 400 });
       }
 
-      const cancelled = await prisma.engagement.update({
-        where: { id: engagementId },
-        data: { status: ENGAGEMENT_STATUS_CANCELLED },
+      await updateEngagementRecord(engagementId, {
+        status: ENGAGEMENT_STATUS_CANCELLED,
       });
 
-      await Promise.all([
-        prisma.engagementSlot.update({
-          where: { id: engagement.slotId },
-          data: { status: SLOT_STATUS_AVAILABLE },
-        }),
-        prisma.request.update({
-          where: { id: engagement.requestId },
-          data: { status: "Ready for Engagement" },
-        }),
-      ]);
+      if (engagement.slotItemId) {
+        await releaseSlot(engagement.slotItemId.trim());
+      }
+
+      await updateRequestStatusByItemId(requestRow.id, "Ready for Engagement");
+
+      const reviewerIds = oldSlot ? parseSlotAttendeesJson(oldSlot.attendees) : [];
 
       await sendEngagementChangeEmails({
         changeType: "cancelled",
-        requestId: engagement.request.id,
-        requestNo: engagement.request.requestNo,
-        requestTitle: engagement.request.requestTitle,
-        requestorName: engagement.request.requestorName,
-        requestorEmail: engagement.request.requestorEmail,
+        requestRouteId,
+        requestNo: requestRow.requestNo ?? "",
+        requestTitle: requestRow.requestTitle ?? "",
+        requestorName: requestRow.requestorName ?? "",
+        requestorEmail: requestRow.requestorEmail ?? "",
         engagementName: engagement.name || "Engagement",
-        engagementType: engagement.type,
-        engagementLocation: engagement.location,
-        slotStartTime: engagement.slot.startTime,
-        slotEndTime: engagement.slot.endTime,
-        reviewerIds: engagement.slot.attendees ?? [],
+        engagementType: engagement.type ?? null,
+        engagementLocation: engagement.location ?? null,
+        slotStartTime: oldSlot?.startTime ? new Date(oldSlot.startTime) : null,
+        slotEndTime: oldSlot?.endTime ? new Date(oldSlot.endTime) : null,
+        reviewerIds,
       });
 
+      const cancelled = await getEngagementById(engagementId);
       return NextResponse.json(cancelled);
     }
 

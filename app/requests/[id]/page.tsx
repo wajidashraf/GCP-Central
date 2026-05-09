@@ -15,6 +15,10 @@ import { PROCUREMENT_METHODS } from '@/src/constants/enums/procurement';
 import ImagePreviewTrigger from '@/src/components/sections/image-preview-trigger';
 import PrintButton from '@/src/components/ui/printButton';
 import { listItems } from '@/lib/sharepoint/lists';
+import {
+  listSuggestionsForRequestItem,
+  mapSuggestionToApi,
+} from '@/lib/sharepoint/working-gcp-suggestions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -390,6 +394,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       .filter(Boolean)
       .map((role) => String(role).toLowerCase()),
   );
+  const suggestionRouteId = (sharePointRequest.uuid ?? '').trim() || sharePointRequest.id;
   const reviewerSuggestions: Array<{
     id: string;
     suggestion: string;
@@ -402,6 +407,28 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
     sourceRole?: string | null;
     createdAt: string;
   }> = [];
+  try {
+    if (process.env.WORKING_GCP_SUGGESTIONS_LIST_ID) {
+      const suggestionRows = await listSuggestionsForRequestItem(sharePointRequest.id);
+      for (const row of suggestionRows) {
+        const mapped = mapSuggestionToApi(row, suggestionRouteId);
+        const entry = {
+          id: String(mapped.id),
+          suggestion: String(mapped.suggestion ?? ''),
+          sourceRole: (mapped.sourceRole as string | null | undefined) ?? null,
+          createdAt: String(mapped.createdAt ?? ''),
+        };
+        const sr = (entry.sourceRole ?? '').trim().toLowerCase();
+        if (sr === 'working_gcpc') {
+          workingGcpcSuggestions.push(entry);
+        } else {
+          reviewerSuggestions.push(entry);
+        }
+      }
+    }
+  } catch {
+    // List optional until env is set — leave arrays empty
+  }
   const verifierCommentData = null;
   const requestIdForActions = (sharePointRequest.uuid ?? '').trim() || sharePointRequest.id;
 

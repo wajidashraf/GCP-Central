@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth/get-current-user";
 import { hasRole } from "@/src/lib/auth/has-role";
+import {
+  createSignatoryMember,
+  listSignatoryMembersOrdered,
+  type SPSignatoryMemberRow,
+} from "@/lib/sharepoint/signatories";
 
 const GROUPS = ["prepared", "confirmed"] as const;
 type SignatoryGroup = (typeof GROUPS)[number];
@@ -12,6 +16,20 @@ function normalizeGroup(value: unknown): SignatoryGroup | null {
   return GROUPS.includes(g as SignatoryGroup) ? (g as SignatoryGroup) : null;
 }
 
+function memberGroup(row: SPSignatoryMemberRow): string {
+  return String(row.signatoryGroup ?? row.group ?? "").trim().toLowerCase();
+}
+
+function mapMemberToApi(row: SPSignatoryMemberRow & { id: string }) {
+  return {
+    id: row.id,
+    group: memberGroup(row),
+    name: row.Title ?? "",
+    email: row.email ?? "",
+    sortOrder: Number(row.sortOrder ?? 0),
+  };
+}
+
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -19,11 +37,8 @@ export async function GET() {
       return NextResponse.json({ error: "Only admins can view signatory members" }, { status: 403 });
     }
 
-    const members = await prisma.signatoryMember.findMany({
-      orderBy: [{ group: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
-    });
-
-    return NextResponse.json(members);
+    const members = await listSignatoryMembersOrdered();
+    return NextResponse.json(members.map((m) => mapMemberToApi(m)));
   } catch (error) {
     console.error("Error listing signatory members:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -47,24 +62,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Group, name, and email are required" }, { status: 400 });
     }
 
-    const last = await prisma.signatoryMember.findFirst({
-      where: { group },
-      orderBy: { sortOrder: "desc" },
-      select: { sortOrder: true },
-    });
-    const sortOrder = (last?.sortOrder ?? -1) + 1;
+    const members = await listSignatoryMembersOrdered();
+    const inGroup = members.filter((m) => memberGroup(m) === group);
+    const lastOrder = inGroup.reduce((max, m) => Math.max(max, Number(m.sortOrder ?? 0)), -1);
+    const sortOrder = lastOrder + 1;
 
-    const created = await prisma.signatoryMember.create({
-      data: {
-        group,
-        name,
-        email,
-        emailLower,
-        sortOrder,
-      },
+    const created = await createSignatoryMember({
+      group,
+      name,
+      email,
+      emailLower,
+      sortOrder,
     });
 
-    return NextResponse.json(created);
+    return NextResponse.json(mapMemberToApi(created));
   } catch (error) {
     console.error("Error creating signatory member:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

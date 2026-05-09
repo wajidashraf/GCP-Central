@@ -1,24 +1,21 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import {
+  listAllEngagementSlots,
+  listAllRequests,
+  listEngagements,
+  parseSlotAttendeesJson,
+  type SPEngagementRow,
+  type SPEngagementSlotRow,
+  type SPRequestRow,
+} from "@/lib/sharepoint/engagements";
+import { listUsers } from "@/lib/sharepoint/lists";
 import { getCurrentUser } from "@/src/lib/auth/get-current-user";
 import { hasRole } from "@/src/lib/auth/has-role";
 
 const ENGAGEMENT_STATUS_SCHEDULED = "scheduled";
 const ENGAGEMENT_STATUS_RESCHEDULED = "Re-Schedule";
 
-type EngagementListItem = {
-  id: string;
-  requestId: string;
-  slotId: string;
-  requestorId: string;
-  engagementNumber: string;
-  name: string;
-  type: string;
-  location: string | null;
-  notes: string | null;
-  status: string;
-  createdAt: Date;
-};
+type SlotWithId = SPEngagementSlotRow & { id: string };
 
 export async function GET() {
   try {
@@ -27,83 +24,45 @@ export async function GET() {
       return NextResponse.json({ error: "Only admins can view engagements" }, { status: 403 });
     }
 
-    const engagements = await prisma.engagement.findMany({
-      where: { status: { in: [ENGAGEMENT_STATUS_SCHEDULED, ENGAGEMENT_STATUS_RESCHEDULED] } },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        requestId: true,
-        slotId: true,
-        requestorId: true,
-        engagementNumber: true,
-        name: true,
-        type: true,
-        location: true,
-        notes: true,
-        status: true,
-        createdAt: true,
-      },
-    });
-
-    const requestIds = Array.from(new Set(engagements.map((item: EngagementListItem) => item.requestId).filter(Boolean)));
-    const slotIds = Array.from(new Set(engagements.map((item: EngagementListItem) => item.slotId).filter(Boolean)));
-
-    type RequestListItem = {
-      id: string;
-      requestNo: string;
-      requestTitle: string | null;
-      requestorId: string;
-      requestorName: string | null;
-      requestorEmail: string | null;
-    };
-
-    type SlotListItem = {
-      id: string;
-      slotName: string;
-      startTime: Date;
-      endTime: Date;
-      attendees: string[];
-    };
-
-    const [requests, slots] = await Promise.all([
-      requestIds.length > 0
-        ? prisma.request.findMany({
-            where: { id: { in: requestIds } },
-            select: {
-              id: true,
-              requestNo: true,
-              requestTitle: true,
-              requestorId: true,
-              requestorName: true,
-              requestorEmail: true,
-            },
-          })
-        : [],
-      slotIds.length > 0
-        ? prisma.engagementSlot.findMany({
-            where: { id: { in: slotIds } },
-            select: {
-              id: true,
-              slotName: true,
-              startTime: true,
-              endTime: true,
-              attendees: true,
-            },
-          })
-        : [],
+    const [engagements, requests, slots, users] = await Promise.all([
+      listEngagements(),
+      listAllRequests(),
+      listAllEngagementSlots(),
+      listUsers(),
     ]);
 
-    const requestById = new Map<string, RequestListItem>(requests.map((item: RequestListItem) => [item.id, item]));
-    const slotById = new Map<string, SlotListItem>(slots.map((item: SlotListItem) => [item.id, item]));
+    const activeStatuses = new Set(
+      [ENGAGEMENT_STATUS_SCHEDULED, ENGAGEMENT_STATUS_RESCHEDULED].map((s) => s.toLowerCase())
+    );
 
-    const validEngagements = engagements.filter((engagement: EngagementListItem) => {
-      const hasRequest = requestById.has(engagement.requestId);
-      const hasSlot = slotById.has(engagement.slotId);
+    const filtered = engagements.filter((e) =>
+      activeStatuses.has((e.status ?? "").toLowerCase())
+    );
+
+    const requestById = new Map<string, SPRequestRow & { id: string }>();
+    for (const r of requests) {
+      requestById.set(String(r.id).trim(), r as SPRequestRow & { id: string });
+    }
+
+    const slotById = new Map<string, SlotWithId>();
+    for (const s of slots) {
+      slotById.set(s.id, s);
+    }
+
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    type EngagementListItem = SPEngagementRow & { id: string };
+
+    const validEngagements = filtered.filter((engagement: EngagementListItem) => {
+      const requestId = String(engagement.requestIdLookupId ?? "").trim();
+      const slotId = engagement.slotItemId?.trim();
+      const hasRequest = requestId ? requestById.has(requestId) : false;
+      const hasSlot = slotId ? slotById.has(slotId) : false;
       if (!hasRequest || !hasSlot) {
         console.warn("Skipping orphaned scheduled engagement in admin list:", {
           engagementId: engagement.id,
-          requestId: engagement.requestId,
-          slotId: engagement.slotId,
+          requestIdLookupId: requestId,
+          slotItemId: slotId,
           hasRequest,
           hasSlot,
         });
@@ -111,68 +70,75 @@ export async function GET() {
       return hasRequest && hasSlot;
     });
 
-    const requestorIds = Array.from(
-      new Set(validEngagements.map((item: EngagementListItem) => item.requestorId).filter(Boolean))
-    );
-    const reviewerIds = Array.from(
-      new Set(
-        validEngagements.flatMap((item: EngagementListItem) => slotById.get(item.slotId)?.attendees ?? []).filter(Boolean)
-      )
-    );
-
-    type UserListItem = {
-      id: string;
-      name: string | null;
-      email: string | null;
-    };
-
-    const [requestors, reviewers] = await Promise.all([
-      requestorIds.length > 0
-        ? prisma.user.findMany({
-            where: { id: { in: requestorIds } },
-            select: { id: true, name: true, email: true },
-          })
-        : [],
-      reviewerIds.length > 0
-        ? prisma.user.findMany({
-            where: { id: { in: reviewerIds } },
-            select: { id: true, name: true, email: true },
-          })
-        : [],
-    ]);
-
-    const requestorById = new Map<string, UserListItem>(requestors.map((userRow: UserListItem) => [userRow.id, userRow]));
-    const reviewerById = new Map<string, UserListItem>(reviewers.map((userRow: UserListItem) => [userRow.id, userRow]));
-
     const payload = validEngagements.map((engagement: EngagementListItem) => {
-      const request = requestById.get(engagement.requestId)!;
-      const slot = slotById.get(engagement.slotId)!;
+      const requestId = String(engagement.requestIdLookupId ?? "").trim();
+      const slotId = engagement.slotItemId!.trim();
+      const request = requestById.get(requestId)!;
+      const slot = slotById.get(slotId)!;
+
+      const attendeeIds = parseSlotAttendeesJson(slot.attendees);
+      const reviewers = attendeeIds
+        .map((reviewerId: string) => {
+          const u = userById.get(reviewerId);
+          if (!u) return null;
+          return { id: u.id, name: u.Title, email: u.email };
+        })
+        .filter((reviewer): reviewer is NonNullable<typeof reviewer> => Boolean(reviewer));
+
+      const requestorId = engagement.requestorUserId?.trim();
+      const createdByUser = requestorId ? userById.get(requestorId) : undefined;
+
+      const createdRaw =
+        (engagement as SPEngagementRow & { Created?: string }).Created ??
+        engagement["Created" as keyof typeof engagement];
+
+      const createdAt =
+        typeof createdRaw === "string"
+          ? createdRaw
+          : slot.startTime ?? new Date().toISOString();
+
       return {
-      id: engagement.id,
-      engagementNumber: engagement.engagementNumber,
-      name: engagement.name,
-      type: engagement.type,
-      location: engagement.location,
-      notes: engagement.notes,
-      status: engagement.status,
-      createdAt: engagement.createdAt,
-      request,
-      slot: {
-        id: slot.id,
-        slotName: slot.slotName,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-      },
-      createdBy:
-        requestorById.get(engagement.requestorId) ?? {
-          id: engagement.requestorId,
-          name: request.requestorName,
-          email: request.requestorEmail,
+        id: engagement.id,
+        engagementNumber: engagement.engagementNumber ?? null,
+        name: engagement.name ?? null,
+        type: engagement.type ?? null,
+        location: engagement.location ?? null,
+        notes: engagement.notes ?? null,
+        status: engagement.status ?? "",
+        createdAt,
+        request: {
+          id: request.uuid ?? request.id,
+          requestNo: request.requestNo ?? "",
+          requestTitle: request.requestTitle ?? null,
+          requestorId: String(request.requestorIdLookupId ?? requestorId ?? ""),
+          requestorName: request.requestorName ?? null,
+          requestorEmail: request.requestorEmail ?? null,
         },
-      reviewers: slot.attendees
-        .map((reviewerId: string) => reviewerById.get(reviewerId))
-        .filter((reviewer): reviewer is NonNullable<typeof reviewer> => Boolean(reviewer)),
+        slot: {
+          id: slot.id,
+          slotName: slot.slotName ?? "",
+          startTime: slot.startTime ?? "",
+          endTime: slot.endTime ?? "",
+        },
+        createdBy: createdByUser
+          ? {
+              id: createdByUser.id,
+              name: createdByUser.Title,
+              email: createdByUser.email,
+            }
+          : {
+              id: requestorId ?? "",
+              name: request.requestorName ?? "",
+              email: request.requestorEmail ?? "",
+            },
+        reviewers,
       };
+    });
+
+    payload.sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime();
+      const tb = new Date(b.createdAt).getTime();
+      return tb - ta;
     });
 
     return NextResponse.json(payload);

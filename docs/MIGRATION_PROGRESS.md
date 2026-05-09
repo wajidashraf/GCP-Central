@@ -71,7 +71,7 @@ Both files are uploaded into the same SharePoint Drive folder (`/CAA/caa_{reques
 
 | File | Purpose | State |
 |---|---|---|
-| `lib/sharepoint/lists.ts` | Generic Graph CRUD helpers (`listItems`, `getItem`, `createItem`, `updateItem`, `deleteItem`) + typed helpers for `Users` and `Companies` lists. | ✅ Done |
+| `lib/sharepoint/lists.ts` | Generic Graph CRUD helpers (`listItems`, `getItem`, `createItem`, `updateItem`, `deleteItem`) + typed helpers for `Users`, `Companies`, and `Roles` lists (`updateUser`, `findCompanyById`, `listRoles`, etc.). | ✅ Done |
 | `lib/sharepoint/constants.ts` | List/file/field name constants. | ✅ Done |
 | `lib/sharepoint/requests.ts` | `syncRequestParentToSharePoint(requestId)` — mirrors legacy Mongo parent `Request` into SharePoint when needed. | ✅ Done |
 | `lib/sharepoint/pbl.ts` | Full PBL CRUD on SharePoint (base request, project details, bidders, submission, document clearing). | ✅ Done |
@@ -86,6 +86,11 @@ Both files are uploaded into the same SharePoint Drive folder (`/CAA/caa_{reques
 | `lib/sharepoint/cpr.ts` | Full CPR CRUD on SharePoint, including JSON-encoded composite details and document clear helper (`clearCprDocumentByRequestUuid`). | ✅ Done |
 | `lib/sharepoint/jvp.ts` | Full JVP CRUD on SharePoint, including JSON-encoded dynamic/table fields and per-file metadata slots (`document`, `cashflowForecast`, `costStructure`) with targeted clear helpers for upload DELETE resolution. | ✅ Done |
 | `lib/sharepoint/stsp.ts` | Full STSP CRUD on SharePoint, including JSON-encoded dynamic/table fields and per-file metadata slots (`document`, `contractStructure`, `revenueVsCost`, `cashflow`) with targeted clear helpers for upload DELETE resolution. | ✅ Done |
+| `lib/sharepoint/engagements.ts` | Engagement slots lock/release, request lookup by `uuid`, engagements CRUD, booking payload mapping for `/book-engagement` + admin engagement APIs. | ✅ Done |
+| `lib/sharepoint/request-resolve.ts` | Resolve `Requests` rows by route param (`id` / `uuid` / `requestNo`), company access helpers. | ✅ Done |
+| `lib/sharepoint/request-bundle.ts` | Loads parent request + RTP/PBL/JVP/projects/bidders joins for endorsement & acknowledgement loaders. | ✅ Done |
+| `lib/sharepoint/working-gcp-suggestions.ts` | Reviewer + Working GCPC suggestions (`WORKING_GCP_SUGGESTIONS_LIST_ID`). | ✅ Done |
+| `lib/sharepoint/signatories.ts` | Signatory members + request signatures (`SIGNATORY_MEMBERS_LIST_ID`, `REQUEST_SIGNATURES_LIST_ID`). | ✅ Done |
 
 `lib/graph.ts` provides the Graph client + `getSiteId()` / `getDriveId()` helpers using `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` and `SHAREPOINT_SITE_ID` / `SHAREPOINT_DRIVE_ID`.
 
@@ -130,34 +135,44 @@ For everything else (unknown/unmigrated `requestType`), the file is uploaded to 
 |---|---|---|
 | Requests list page | `app/requests/page.tsx` | Reads from SharePoint `Requests` list via `listItems`. |
 | Request detail page | `app/requests/[id]/page.tsx` | Reads parent + per-form child lists via `listItems`. |
-| Verifier comment | `app/api/requests/[id]/verifier-comment/route.ts` | Updates SharePoint via `listItems` + `updateItem`. |
+| Verifier comment | `app/api/requests/[id]/verifier-comment/route.ts` | Updates SharePoint `Requests`: `verificationComment`, request `status`, `verifiedOn` (ISO timestamp), and `verifiedByLookupId` (lookup to **Users** item id). |
 | Draft Review (decision code) | `app/api/requests/[id]/draft-review/route.ts` | SharePoint only. |
 | Pending Review | `app/api/requests/[id]/pending-review/route.ts` | SharePoint only. |
 | Complete Review | `app/api/requests/[id]/complete-review/route.ts` | SharePoint only. |
 | Working GCPC | `app/api/requests/[id]/working-gcpc/route.ts` | SharePoint only. |
+| Book engagement | `app/api/requests/[id]/book-engagement/route.ts` | SharePoint `Requests`, `EngagementSlots`, `Engagements` lists via `lib/sharepoint/engagements.ts`. |
+| Admin engagement management | `app/api/admin/engagement-management/route.ts`, `app/api/admin/engagement-management/[engagementId]/route.ts` | SharePoint only. |
 | Cloudinary upload route | `app/api/uploads/cloudinary/route.ts` | Routes to SharePoint Drive for migrated request types. |
 | Companies API | `app/api/company/route.ts` | Fully on SharePoint (`createCompany`, `findCompanyByCode`, `listCompanies`). Also seeds `Companies` list from `prisma/company-records.json` on first GET. |
+| Reviewer / Working GCPC suggestions | `app/api/requests/[id]/reviewer-suggestion/route.ts` | SharePoint list `WORKING_GCP_SUGGESTIONS_LIST_ID` via `lib/sharepoint/working-gcp-suggestions.ts`. |
+| Review acceptance | `app/api/requests/[id]/review-acceptance/route.ts` | SharePoint `Requests` + loaders in `src/lib/requests/review-acceptance-load.ts`. |
+| Endorsement | `app/api/requests/[id]/endorsement/route.ts` | SharePoint `Requests`; data from `src/lib/requests/endorsement-load.ts`. |
+| Acknowledgement | `app/api/requests/[id]/acknowledgement/route.ts` | SharePoint `Requests`; data from `src/lib/requests/acknowledgement-load.ts`. |
+| Request signatures | `app/api/requests/[id]/signatures/route.ts` | SharePoint `REQUEST_SIGNATURES_LIST_ID` + `Requests` status updates. |
+| Admin signatories | `app/api/admin/signatory-members/route.ts`, `[id]/route.ts` | SharePoint `SIGNATORY_MEMBERS_LIST_ID` + signature counts on `REQUEST_SIGNATURES_LIST_ID`. |
 
 ---
 
-## 5. APIs Still on MongoDB (need migration)
+## 5. Remaining Prisma usage (outside `app/api/` routes)
 
-These route handlers still import `@/lib/prisma`:
+All **`app/api/**` route handlers** have been migrated off `@/lib/prisma`. Prisma still appears in legacy helpers and sync paths, for example:
 
-- `app/api/requests/[id]/book-engagement/route.ts`
-- `app/api/requests/[id]/review-acceptance/route.ts`
-- `app/api/requests/[id]/acknowledgement/route.ts`
-- `app/api/requests/[id]/endorsement/route.ts`
-- `app/api/requests/[id]/signatures/route.ts`
-- `app/api/requests/[id]/reviewer-suggestion/route.ts`
-- `app/api/admin/reviewers/route.ts`
-- `app/api/admin/signatory-members/route.ts`
-- `app/api/admin/signatory-members/[id]/route.ts`
-- `app/api/admin/engagement-management/route.ts`
-- `app/api/admin/engagement-management/[engagementId]/route.ts`
-- `app/api/admin/engagement-slots/route.ts`
+- `lib/sharepoint/requests.ts` — `syncRequestParentToSharePoint` (Mongo mirror for unmigrated flows).
+- `lib/request-no.ts`, `lib/project-code.ts`, `lib/email/request-notifications.ts`.
+- `src/lib/requests/ensure-complete-review-from-signatures.ts`.
+- Some pages under `app/requests/[id]/` (e.g. `review/page.tsx`, `verify/page.tsx`) still query Prisma directly.
 
-These are mostly **post-submission lifecycle** endpoints (engagement booking, signatures, endorsement, acknowledgement) and **admin-side** endpoints (reviewers, signatories, engagement slots). They need their own SharePoint lists before they can be migrated.
+Remove Prisma once those call sites are migrated or retired (see §7 Cleanup).
+
+### Admin pages on SharePoint
+
+- `app/admin/signatories/page.tsx` uses `/api/admin/signatory-members` (SharePoint-backed).
+- `app/admin/engagement-slots/page.tsx`, `app/admin/engagement-management/page.tsx` — SharePoint-backed APIs.
+
+`/admin/roles`:
+
+- `app/admin/roles/page.tsx` reads `Users`, `Companies`, and `Roles` from SharePoint via `lib/sharepoint/lists.ts`.
+- `app/admin/roles/actions.ts` updates user roles/active status and creates new users directly in SharePoint `Users` list.
 
 ---
 
@@ -180,15 +195,76 @@ JVP_REQUESTS_LIST_ID
 STSP_REQUESTS_LIST_ID
 CI_REQUESTS_LIST_ID
 CPR_REQUESTS_LIST_ID
+ROLES_LIST_ID
+ENGAGEMENT_SLOTS_LIST_ID
+ENGAGEMENTS_LIST_ID
+WORKING_GCP_SUGGESTIONS_LIST_ID
+SIGNATORY_MEMBERS_LIST_ID
+REQUEST_SIGNATURES_LIST_ID
 ```
 
-Not yet defined / planned:
+Optional / not required by current API code:
 
 ```
-SIGNATORY_MEMBERS_LIST_ID, REVIEWER_SUGGESTIONS_LIST_ID
-VERIFIER_COMMENTS_LIST_ID, REQUEST_SIGNATURES_LIST_ID
-ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
+VERIFIER_COMMENTS_LIST_ID
 ```
+
+### Engagements list — lookup columns and `notes` (booking)
+
+Booking and admin flows use `lib/sharepoint/engagements.ts`. **Create/update** writes these Microsoft Graph field names (they map to your SharePoint lookup columns):
+
+| Purpose | Graph write field | Resolves to |
+|---|---|---|
+| Link to request row | `requestIdLookupId` | **Requests** list item id |
+| Link to booked slot | `slotIdLookupId` | **EngagementSlots** list item id |
+| Link to booker | `requestorIdLookupId` | **Users** list item id |
+
+Other engagement fields used include `Title`, `uuid`, `engagementNumber`, `name`, `type`, `location`, `status`, and **`notes`**.
+
+**`notes` must contain only user-entered text** from the booking UI. The app does **not** embed JSON or internal metadata in `notes`.
+
+When reading list items, Graph may expose lookup ids as `requestIdLookupId`, `slotIdLookupId`, `requestorIdLookupId`. Legacy plain-text columns on older rows (if any) are still tolerated when resolving engagements by request.
+
+**EngagementSlots** should include a `status` column (`available` / `booked`) used when locking slots during booking and reschedule.
+
+> `SHAREPOINT_ENGAGEMENT_FIELDS` in `lib/sharepoint/constants.ts` may still list legacy single-line names (`requestUuid`, `slotItemId`, `requestorUserId`); **writes** for new bookings use the `…LookupId` fields above. Align constants with SharePoint when convenient.
+
+### Working GCP suggestions list (`WORKING_GCP_SUGGESTIONS_LIST_ID`)
+
+Stores **both** reviewer suggestions and Working GCPC suggestions (`sourceRole`: `reviewer` | `working_gcpc`). Code expects these columns (Graph / internal names — align with your list):
+
+| Field | Purpose |
+|---|---|
+| `Title` | Short title (first line of suggestion). |
+| `suggestionText` | Full suggestion body (multiline). |
+| `reviewerName` | Display name of submitter. |
+| `sourceRole` | `reviewer` or `working_gcpc`. |
+| `reviewStatus` | `pending` or `reviewed`. |
+| `reviewAction` | `accepted`, `no_need`, or `pending` (verifier/admin PATCH). |
+| `requestIdLookupId` | Lookup to **Requests** item id. |
+| `submitterLookupId` | Lookup to **Users** item id (submitter). |
+
+### Signatory members (`SIGNATORY_MEMBERS_LIST_ID`)
+
+| Field | Purpose |
+|---|---|
+| `Title` | Member display name. |
+| `signatoryGroup` | `prepared` or `confirmed` (legacy Mongo field was `group`). |
+| `email`, `emailLower` | Contact email. |
+| `sortOrder` | Ordering within the group. |
+
+### Request signatures (`REQUEST_SIGNATURES_LIST_ID`)
+
+| Field | Purpose |
+|---|---|
+| `Title` | Optional label. |
+| `requestIdLookupId` | **Requests** item id. |
+| `signatoryMemberLookupId` | **Signatory members** item id. |
+| `signatoryName`, `signatoryEmail`, `signatoryEmailLower` | Snapshot at signing time. |
+| `signatureGroup` | `prepared` or `confirmed`. |
+| `signUrl`, `signPublicId` | Signature image references. |
+| `signedAt` | ISO timestamp. |
+| `signerUserLookupId` | **Users** item id of signer. |
 
 ---
 
@@ -198,12 +274,17 @@ ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
 
 - ✅ All 13 submit forms are now migrated to SharePoint lists + SharePoint document library.
 
-### Post-Submit & Admin APIs
+### Post-Submit & Admin APIs (`app/api/`)
 
-- 🔴 Migrate signatures, reviewer suggestions, book engagement, review acceptance, endorsement, acknowledgement endpoints to SharePoint lists.
-- 🔴 Migrate admin endpoints (reviewers, signatory members, engagement management, engagement slots) to SharePoint lists.
+- ✅ Signatures, reviewer / Working GCPC suggestions, review acceptance, endorsement, acknowledgement — SharePoint (see §4).
+- ✅ Admin signatory members CRUD — SharePoint.
+- ✅ Verifier comment, book engagement, admin engagement APIs — SharePoint (unchanged).
 
-### Cleanup (after all forms are migrated)
+### Non-API code still using Prisma
+
+- 🔴 Pages and libs listed in §5 (`ensure-complete-review-from-signatures`, some `app/requests/[id]/*` pages, `syncRequestParentToSharePoint`, etc.).
+
+### Cleanup (after Prisma fully retired)
 
 - 🔴 Remove the legacy Cloudinary DELETE branches in `app/api/uploads/cloudinary/route.ts`.
 - 🔴 Remove `lib/cloudinary.ts` usage and the Cloudinary env vars (`CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`).
@@ -222,5 +303,7 @@ ENGAGEMENT_SLOTS_LIST_ID, ENGAGEMENTS_LIST_ID
 | Request listing & detail pages | ✅ | — |
 | Verifier / Reviewer / Working GCPC review APIs | ✅ | — |
 | Companies & Users data | ✅ | — |
-| Post-submit lifecycle APIs (signatures, engagement, endorsement, ack) | — | 🔴 All |
-| Admin APIs (reviewers, signatories, engagement) | — | 🔴 All |
+| Post-submit lifecycle APIs (`app/api/` — signatures, endorsement, ack, suggestions, review acceptance) | ✅ | — |
+| Admin APIs | ✅ (reviewers, engagement, signatories, roles) | — |
+| Admin pages (roles, signatories, engagement slots/management) | ✅ | — |
+| Remove Prisma globally | — | 🔴 libs + select pages (§5) |

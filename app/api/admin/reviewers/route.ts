@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { listUsers, parseRoles } from '@/lib/sharepoint/lists';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { hasRole } from '@/src/lib/auth/has-role';
 
@@ -14,16 +14,14 @@ export async function GET() {
       );
     }
 
-    const reviewers = await prisma.user.findMany({
-      where: {
-        roles: { has: 'reviewer' },
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-    });
+    const users = await listUsers();
+    const reviewers = users
+      .filter((user) => parseRoles(user.roles).includes('reviewer'))
+      .map((user) => ({
+        id: user.id,
+        name: user.Title,
+        email: user.email,
+      }));
 
     return NextResponse.json(reviewers);
   } catch (error) {

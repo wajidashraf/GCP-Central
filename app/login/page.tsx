@@ -1,4 +1,5 @@
-﻿import Link from 'next/link';
+﻿import { Suspense } from 'react';
+import Link from 'next/link';
 import LoginForm from './login-form';
 
 export default function LoginPage() {
@@ -12,7 +13,9 @@ export default function LoginPage() {
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           Use your username or email with password to access GCP Central.
         </p>
-        <LoginForm />
+        <Suspense fallback={null}>
+          <LoginForm />
+        </Suspense>
 
         <div className="mt-5 text-sm">
           <Link href="/" className="font-medium text-[var(--brand-600)] hover:underline">

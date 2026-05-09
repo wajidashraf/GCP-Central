@@ -1,7 +1,8 @@
-import prisma from "@/lib/prisma";
 import { REQUEST_STATUS_MAP } from "@/src/constants/enums/requestStatus";
 import { hasRole } from "@/src/lib/auth/has-role";
 import type { CurrentUser } from "@/src/types/auth";
+import { loadSharePointRequestBundle, resolveProjectForBundle } from "@/lib/sharepoint/request-bundle";
+import { userMatchesRequestCompany, type SPRequestRowExtended } from "@/lib/sharepoint/request-resolve";
 
 const PENDING_ACK = REQUEST_STATUS_MAP.PENDING_ACK.label.toLowerCase();
 
@@ -11,12 +12,12 @@ function normalizeRequestId(raw: string | undefined): string | null {
   return id || null;
 }
 
-function canAccessAcknowledgement(user: CurrentUser, requestCompanyId: string) {
+function canAccessAcknowledgement(user: CurrentUser, request: SPRequestRowExtended & { id: string }) {
   const isAdmin = hasRole(user, "admin");
   const isHoc = hasRole(user, "hoc");
   if (!isAdmin && !isHoc) return { ok: false as const, reason: "forbidden" as const };
   if (isAdmin) return { ok: true as const };
-  if (!user.companyId || user.companyId !== requestCompanyId) {
+  if (!userMatchesRequestCompany(user, request)) {
     return { ok: false as const, reason: "company" as const };
   }
   return { ok: true as const };
@@ -45,25 +46,37 @@ export type AcknowledgementLoadResult =
   | { ok: true; data: AcknowledgementPayload }
   | { ok: false; status: 401 | 403 | 404 | 400; error: string };
 
-function getProjectData(request: {
-  requestTitle: string;
-  rtp: { projectName: string; project?: { projectName: string; projectCode: string | null } | null } | null;
-  pbl: { projectCode: string | null; project: { projectName: string; projectCode: string | null } } | null;
-  jvp: { projectCode: string | null; project: { projectName: string; projectCode: string | null } } | null;
-}) {
+function getProjectData(bundle: Awaited<ReturnType<typeof loadSharePointRequestBundle>>) {
+  if (!bundle) {
+    return { projectName: "-", projectCode: "-" };
+  }
+  const { request, rtp, pbl, jvp, projects } = bundle;
+  const pblProject = resolveProjectForBundle(
+    projects,
+    pbl?.projectIdLookupId ?? pbl?.projectIdId ?? pbl?.projectIdLookup ?? pbl?.projectId,
+  );
+  const jvpProject = resolveProjectForBundle(
+    projects,
+    jvp?.projectIdLookupId ?? jvp?.projectIdId ?? jvp?.projectIdLookup ?? jvp?.projectId,
+  );
+  const rtpProject = resolveProjectForBundle(
+    projects,
+    rtp?.projectIdLookupId ?? rtp?.projectIdId ?? rtp?.projectIdLookup ?? rtp?.projectId,
+  );
+
   const projectName =
-    request.pbl?.project.projectName ??
-    request.jvp?.project.projectName ??
-    request.rtp?.project?.projectName ??
-    request.rtp?.projectName ??
-    request.requestTitle;
+    pblProject?.projectName ??
+    jvpProject?.projectName ??
+    rtpProject?.projectName ??
+    rtp?.projectName ??
+    String(request.requestTitle ?? "");
 
   const projectCode =
-    request.pbl?.projectCode ??
-    request.pbl?.project.projectCode ??
-    request.jvp?.projectCode ??
-    request.jvp?.project.projectCode ??
-    request.rtp?.project?.projectCode ??
+    (pbl?.projectCode ?? "").trim() ||
+    pblProject?.projectCode ||
+    (jvp?.projectCode ?? "").trim() ||
+    jvpProject?.projectCode ||
+    rtpProject?.projectCode ||
     "-";
 
   return { projectName, projectCode };
@@ -80,7 +93,7 @@ function normalizeRefPart(value: string | null | undefined, fallback: string) {
 
 export async function loadAcknowledgement(
   requestIdRaw: string | undefined,
-  user: CurrentUser | null
+  user: CurrentUser | null,
 ): Promise<AcknowledgementLoadResult> {
   if (!user) {
     return { ok: false, status: 401, error: "Authentication required" };
@@ -91,44 +104,13 @@ export async function loadAcknowledgement(
     return { ok: false, status: 400, error: "Invalid request id" };
   }
 
-  const request = await prisma.request.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      requestNo: true,
-      requestTitle: true,
-      requestType: true,
-      companyId: true,
-      companyCode: true,
-      companyName: true,
-      status: true,
-      ackLetterTextContent: true,
-      rtp: {
-        select: {
-          projectName: true,
-          project: { select: { projectName: true, projectCode: true } },
-        },
-      },
-      pbl: {
-        select: {
-          projectCode: true,
-          project: { select: { projectName: true, projectCode: true } },
-        },
-      },
-      jvp: {
-        select: {
-          projectCode: true,
-          project: { select: { projectName: true, projectCode: true } },
-        },
-      },
-    },
-  });
-
-  if (!request) {
+  const bundle = await loadSharePointRequestBundle(id);
+  if (!bundle) {
     return { ok: false, status: 404, error: "Request not found" };
   }
 
-  const access = canAccessAcknowledgement(user, request.companyId);
+  const request = bundle.request;
+  const access = canAccessAcknowledgement(user, request);
   if (!access.ok) {
     const error =
       access.reason === "company"
@@ -137,7 +119,7 @@ export async function loadAcknowledgement(
     return { ok: false, status: 403, error };
   }
 
-  if (request.status.trim().toLowerCase() !== PENDING_ACK) {
+  if ((request.status ?? "").trim().toLowerCase() !== PENDING_ACK) {
     return {
       ok: false,
       status: 400,
@@ -145,22 +127,22 @@ export async function loadAcknowledgement(
     };
   }
 
-  const project = getProjectData(request);
-  const matterType = request.requestType.trim().toUpperCase() || "REQ";
+  const project = getProjectData(bundle);
+  const matterType = String(request.requestType ?? "").trim().toUpperCase() || "REQ";
   const acknowledgementNo = `${normalizeRefPart(request.companyCode, "COMP")}/${normalizeRefPart(project.projectCode, "PROJECT")}/${normalizeRefPart(matterType, "REQ")}/${normalizeRefPart(request.requestNo, "REQUEST")}/ACK`;
 
   return {
     ok: true,
     data: {
       request: {
-        id: request.id,
-        requestNo: request.requestNo,
-        companyCode: request.companyCode,
-        requestTitle: request.requestTitle,
-        requestType: request.requestType,
-        companyName: request.companyName,
-        status: request.status,
-        ackLetterTextContent: request.ackLetterTextContent,
+        id: (request.uuid ?? "").trim() || request.id,
+        requestNo: String(request.requestNo ?? ""),
+        companyCode: String(request.companyCode ?? ""),
+        requestTitle: String(request.requestTitle ?? ""),
+        requestType: String(request.requestType ?? ""),
+        companyName: String(request.companyName ?? ""),
+        status: String(request.status ?? ""),
+        ackLetterTextContent: request.ackLetterTextContent != null ? String(request.ackLetterTextContent) : null,
       },
       acknowledgement: {
         no: acknowledgementNo,

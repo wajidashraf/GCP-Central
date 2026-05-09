@@ -1,10 +1,11 @@
 'use server';
 
+import { randomUUID } from 'crypto';
 import { hash } from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/lib/email/email-service';
 import { getNewUserAccountEmailHtml, htmlToPlainText } from '@/lib/email/email-templates';
-import prisma from '@/lib/prisma';
+import { createUser, findCompanyById, listUsers, updateUser } from '@/lib/sharepoint/lists';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { USER_ROLE_LABELS, USER_ROLES, type UserRole } from '@/src/types/auth';
 
@@ -74,12 +75,9 @@ export async function updateUserRoleAssignmentsAction(formData: FormData) {
     roles.unshift(primaryRole);
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      primaryRole,
-      roles: sortRolesByPriority([...new Set(roles)]),
-    },
+  await updateUser(userId, {
+    primaryRole,
+    roles: JSON.stringify(sortRolesByPriority([...new Set(roles)])),
   });
 
   revalidatePath('/admin/roles');
@@ -95,11 +93,8 @@ export async function toggleUserActiveStatusAction(formData: FormData) {
     return;
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      isActive: nextActive,
-    },
+  await updateUser(userId, {
+    isActive: nextActive,
   });
 
   revalidatePath('/admin/roles');
@@ -143,12 +138,12 @@ export async function createUserWithRolesAction(formData: FormData): Promise<Cre
   }
   const finalRoles = sortRolesByPriority([...new Set(roles)]);
 
-  const duplicate = await prisma.user.findFirst({
-    where: {
-      OR: [{ emailLower }, { usernameLower }],
-    },
-    select: { emailLower: true, usernameLower: true },
-  });
+  const users = await listUsers();
+  const duplicate = users.find(
+    (user) =>
+      (user.emailLower ?? '').trim().toLowerCase() === emailLower ||
+      (user.usernameLower ?? '').trim().toLowerCase() === usernameLower
+  );
 
   if (duplicate) {
     if (duplicate.emailLower === emailLower) {
@@ -158,32 +153,40 @@ export async function createUserWithRolesAction(formData: FormData): Promise<Cre
   }
 
   let companyId: string | null = null;
+  let companyLookupId: number | null = null;
+  let companyCode: string | null = null;
+  let companyName: string | null = null;
   if (companyIdRaw) {
-    const company = await prisma.company.findUnique({
-      where: { id: companyIdRaw },
-      select: { id: true },
-    });
+    const company = await findCompanyById(companyIdRaw);
     if (!company) {
       return { ok: false, message: 'Selected company was not found.' };
     }
     companyId = company.id;
+    const parsedLookupId = Number(company.id);
+    if (Number.isFinite(parsedLookupId)) {
+      companyLookupId = parsedLookupId;
+    }
+    companyCode = company.companyCode ?? null;
+    companyName = company.companyName ?? company.Title ?? null;
   }
 
   const passwordHash = await hash(password, 10);
 
-  await prisma.user.create({
-    data: {
-      name,
-      email: emailRaw,
-      emailLower,
-      username: usernameRaw,
-      usernameLower,
-      passwordHash,
-      primaryRole,
-      roles: finalRoles,
-      companyId,
-      isActive: true,
-    },
+  await createUser({
+    Title: name,
+    uuid: randomUUID(),
+    email: emailRaw,
+    emailLower,
+    username: usernameRaw,
+    usernameLower,
+    passwordHash,
+    primaryRole,
+    roles: JSON.stringify(finalRoles),
+    companyId,
+    companyIdLookupId: companyLookupId,
+    companyCode,
+    companyName,
+    isActive: true,
   });
 
   const roleLabels = finalRoles.map((slug) => USER_ROLE_LABELS[slug]);

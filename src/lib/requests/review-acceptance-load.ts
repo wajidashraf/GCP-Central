@@ -1,7 +1,13 @@
-import prisma from "@/lib/prisma";
 import type { CurrentUser } from "@/src/types/auth";
 import { hasRole } from "@/src/lib/auth/has-role";
 import { REQUEST_STATUS_MAP } from "@/src/constants/enums/requestStatus";
+import {
+  findRequestByRouteId,
+  parseSharePointBool,
+  userMatchesRequestCompany,
+  type SPRequestRowExtended,
+} from "@/lib/sharepoint/request-resolve";
+import { findEngagementsByRequestUuid } from "@/lib/sharepoint/engagements";
 
 const COMPLETE_REVIEW = REQUEST_STATUS_MAP.COMPLETE_REVIEW.label.toLowerCase();
 const PENDING_ENDORSE = REQUEST_STATUS_MAP.PENDING_ENDORSE.label;
@@ -13,12 +19,12 @@ function engagementRank(num: string | null | undefined): number {
   return m ? parseInt(m[1], 10) : -1;
 }
 
-function canAccessReviewAcceptance(user: CurrentUser, requestCompanyId: string) {
+function canAccessReviewAcceptance(user: CurrentUser, request: SPRequestRowExtended) {
   const isAdmin = hasRole(user, "admin");
   const isHoc = hasRole(user, "hoc");
   if (!isAdmin && !isHoc) return { ok: false as const, reason: "forbidden" as const };
   if (isAdmin) return { ok: true as const };
-  if (!user.companyId || user.companyId !== requestCompanyId) {
+  if (!userMatchesRequestCompany(user, request)) {
     return { ok: false as const, reason: "company" as const };
   }
   return { ok: true as const };
@@ -51,12 +57,26 @@ function normalizeRequestId(raw: string | undefined): string | null {
   return id;
 }
 
+function verifiedAtIso(request: SPRequestRowExtended): string | null {
+  const raw = request.verifiedOn ?? request.verifiedAt;
+  if (!raw) return null;
+  const d = new Date(String(raw));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function hocSignedAtIso(request: SPRequestRowExtended): string | null {
+  const raw = request.hocReviewAcceptanceSignedAt;
+  if (!raw) return null;
+  const d = new Date(String(raw));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 /**
  * Shared loader for the review acceptance page and GET API.
  */
 export async function loadReviewAcceptance(
   requestIdRaw: string | undefined,
-  user: CurrentUser | null
+  user: CurrentUser | null,
 ): Promise<ReviewAcceptanceLoadResult> {
   if (!user) {
     return { ok: false, status: 401, error: "Authentication required" };
@@ -67,34 +87,12 @@ export async function loadReviewAcceptance(
     return { ok: false, status: 400, error: "Invalid request id" };
   }
 
-  const requestRecord = await prisma.request.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      requestNo: true,
-      requestTitle: true,
-      companyId: true,
-      verifiedAt: true,
-      reviewConclusionCode1a: true,
-      reviewConclusionCode1b: true,
-      reviewConclusionCode1bComment: true,
-      reviewConclusionCode2: true,
-      reviewConclusionCode3: true,
-      reviewConclusionCode4: true,
-      hocReviewAcceptanceSignUrl: true,
-      hocReviewAcceptanceSignedAt: true,
-      engagements: {
-        select: { engagementNumber: true, updatedAt: true, status: true },
-      },
-    },
-  });
-
-  if (!requestRecord) {
+  const requestRecord = await findRequestByRouteId(id);
+  if (!requestRecord?.id) {
     return { ok: false, status: 404, error: "Request not found" };
   }
 
-  const access = canAccessReviewAcceptance(user, requestRecord.companyId);
+  const access = canAccessReviewAcceptance(user, requestRecord);
   if (!access.ok) {
     const message =
       access.reason === "company"
@@ -103,7 +101,7 @@ export async function loadReviewAcceptance(
     return { ok: false, status: 403, error: message };
   }
 
-  const statusNorm = requestRecord.status.trim().toLowerCase();
+  const statusNorm = (requestRecord.status ?? "").trim().toLowerCase();
   const pendingEndorseNorm = PENDING_ENDORSE.toLowerCase();
   if (statusNorm !== COMPLETE_REVIEW && statusNorm !== pendingEndorseNorm) {
     return {
@@ -113,41 +111,52 @@ export async function loadReviewAcceptance(
     };
   }
 
-  const withNumber = requestRecord.engagements.filter((e) => e.engagementNumber);
+  const requestUuid = (requestRecord.uuid ?? "").trim() || requestRecord.id;
+  const engagementRows = await findEngagementsByRequestUuid(requestUuid);
+  const withNumber = engagementRows.filter((e) => e.engagementNumber);
   const completed = withNumber.filter(
-    (e) => (e.status ?? "").trim().toLowerCase() === ENGAGEMENT_COMPLETED
+    (e) => (e.status ?? "").trim().toLowerCase() === ENGAGEMENT_COMPLETED,
   );
   const pool = completed.length > 0 ? completed : withNumber;
   const latestEng = [...pool].sort(
-    (a, b) => engagementRank(b.engagementNumber) - engagementRank(a.engagementNumber)
+    (a, b) => engagementRank(b.engagementNumber) - engagementRank(a.engagementNumber),
   )[0];
 
   const submitted = Boolean(
-    requestRecord.hocReviewAcceptanceSignedAt && requestRecord.hocReviewAcceptanceSignUrl
+    requestRecord.hocReviewAcceptanceSignedAt && requestRecord.hocReviewAcceptanceSignUrl,
   );
 
   let selectedCode: ReviewAcceptancePayload["form"]["selectedCode"] = null;
-  if (requestRecord.reviewConclusionCode1a) selectedCode = "1a";
-  else if (requestRecord.reviewConclusionCode1b) selectedCode = "1b";
-  else if (requestRecord.reviewConclusionCode2) selectedCode = "2";
-  else if (requestRecord.reviewConclusionCode3) selectedCode = "3";
-  else if (requestRecord.reviewConclusionCode4) selectedCode = "4";
+  if (parseSharePointBool(requestRecord.reviewConclusionCode1a)) selectedCode = "1a";
+  else if (parseSharePointBool(requestRecord.reviewConclusionCode1b)) selectedCode = "1b";
+  else if (parseSharePointBool(requestRecord.reviewConclusionCode2)) selectedCode = "2";
+  else if (parseSharePointBool(requestRecord.reviewConclusionCode3)) selectedCode = "3";
+  else if (parseSharePointBool(requestRecord.reviewConclusionCode4)) selectedCode = "4";
 
   const code1bExceptions = requestRecord.reviewConclusionCode1bComment
-    ? requestRecord.reviewConclusionCode1bComment.split(",").map((s) => s.trim())
+    ? String(requestRecord.reviewConclusionCode1bComment)
+        .split(",")
+        .map((s) => s.trim())
     : [];
+
+  const latestUpdated =
+    (latestEng as { Modified?: string }).Modified ??
+    (latestEng as { modified?: string }).modified ??
+    "";
 
   const data: ReviewAcceptancePayload = {
     request: {
-      requestNo: requestRecord.requestNo,
-      requestTitle: requestRecord.requestTitle,
-      status: requestRecord.status,
-      verifiedAt: requestRecord.verifiedAt?.toISOString() ?? null,
+      requestNo: String(requestRecord.requestNo ?? ""),
+      requestTitle: String(requestRecord.requestTitle ?? ""),
+      status: String(requestRecord.status ?? ""),
+      verifiedAt: verifiedAtIso(requestRecord),
     },
     latestEngagement: latestEng
       ? {
-          engagementNumber: latestEng.engagementNumber,
-          updatedAt: latestEng.updatedAt.toISOString(),
+          engagementNumber: latestEng.engagementNumber ?? null,
+          updatedAt: latestUpdated
+            ? new Date(String(latestUpdated)).toISOString()
+            : new Date().toISOString(),
         }
       : null,
     form: {
@@ -156,8 +165,8 @@ export async function loadReviewAcceptance(
     },
     signature: submitted
       ? {
-          signUrl: requestRecord.hocReviewAcceptanceSignUrl!,
-          signedAt: requestRecord.hocReviewAcceptanceSignedAt!.toISOString(),
+          signUrl: String(requestRecord.hocReviewAcceptanceSignUrl ?? ""),
+          signedAt: hocSignedAtIso(requestRecord) ?? new Date().toISOString(),
         }
       : null,
     readOnly: submitted || statusNorm === pendingEndorseNorm,

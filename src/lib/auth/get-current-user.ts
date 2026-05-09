@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import type { Session } from "next-auth";
 import type { CurrentUser } from "@/src/types/auth";
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -8,7 +9,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   // by another deployment lingers in the browser). Treat that as
   // "not signed in" — the user simply needs a fresh login flow — instead of
   // surfacing a noisy stack trace on every server-rendered page.
-  let session: Awaited<ReturnType<typeof auth>> = null;
+  let session: Session | null = null;
   try {
     session = await auth();
   } catch {

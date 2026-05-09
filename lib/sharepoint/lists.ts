@@ -146,9 +146,18 @@ export interface SPUser {
 
 export interface SPCompany {
   id: string;
-  Title: string;           // company name
+  Title: string;           // company name (display)
+  companyName?: string;    // company name field
   companyCode: string;
   sector: string;
+}
+
+export interface SPRole {
+  id: string;
+  Title?: string;
+  slug?: string;
+  name?: string;
+  uuid?: string;
 }
 
 function getUsersListId(): string {
@@ -163,6 +172,14 @@ function getCompaniesListId(): string {
   const listId = process.env.COMPANIES_LIST_ID;
   if (!listId) {
     throw new Error('COMPANIES_LIST_ID is not set in .env.local');
+  }
+  return listId;
+}
+
+function getRolesListId(): string {
+  const listId = process.env.ROLES_LIST_ID;
+  if (!listId) {
+    throw new Error('ROLES_LIST_ID is not set in .env.local');
   }
   return listId;
 }
@@ -228,6 +245,11 @@ export async function createUser(fields: Record<string, unknown>): Promise<SPUse
   return createItem<SPUser>(usersListId, fields);
 }
 
+export async function updateUser(userId: string, fields: Record<string, unknown>): Promise<void> {
+  const usersListId = getUsersListId();
+  await updateItem(usersListId, userId, fields);
+}
+
 /**
  * Parse the JSON-encoded roles field from a SharePoint User item.
  */
@@ -246,6 +268,23 @@ export async function listCompanies(): Promise<SPCompany[]> {
   return companies.sort((left, right) =>
     (left.companyCode ?? '').localeCompare(right.companyCode ?? '')
   );
+}
+
+export async function findCompanyById(companyId: string): Promise<SPCompany | null> {
+  const normalizedId = companyId.trim();
+  if (!normalizedId) return null;
+  const companies = await listCompanies();
+  return companies.find((company) => company.id === normalizedId) ?? null;
+}
+
+export async function listRoles(): Promise<SPRole[]> {
+  const rolesListId = getRolesListId();
+  const roles = await listItems<SPRole>(rolesListId);
+  return roles.sort((left, right) => {
+    const leftName = (left.name ?? left.Title ?? '').trim();
+    const rightName = (right.name ?? right.Title ?? '').trim();
+    return leftName.localeCompare(rightName);
+  });
 }
 
 export async function createCompany(input: {

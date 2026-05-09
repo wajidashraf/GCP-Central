@@ -540,7 +540,7 @@ export default async function SubmitFormPage({ params }: SubmitFormPageProps) {
             email: user.email,
             companyId: fallbackCompany.id,
             companyCode: fallbackCompany.companyCode,
-            companyName: fallbackCompany.companyName,
+            companyName: fallbackCompany.companyName ?? fallbackCompany.Title,
           }}
           projects={projects.map(toFormProjectOption)}
         />

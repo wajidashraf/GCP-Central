@@ -155,15 +155,21 @@ export async function POST(
       );
     }
 
-    // Create or update verifier comment
-    await updateItem(requestsListId, requestRecord.id, {
+    // Persist verification result on the Requests list.
+    // - `verificationComment`: verifier comment text
+    // - `verifiedBy`: lookup to Users list (set through verifiedByLookupId)
+    // - `verifiedOn`: timestamp of verification
+    const updateFields: Record<string, unknown> = {
       status: normalizedRequestStatus,
-      verifierCommentText: normalizedComment,
-      verifierDecisionCode: normalizedRequestStatus,
-      verifiedBy: user.name,
-      verifiedAt: new Date().toISOString(),
+      verificationComment: normalizedComment,
+      verifiedOn: new Date().toISOString(),
       outcome: normalizedRequestStatus,
-    });
+    };
+    const verifiedByLookupId = Number(user.id);
+    if (Number.isFinite(verifiedByLookupId)) {
+      updateFields.verifiedByLookupId = verifiedByLookupId;
+    }
+    await updateItem(requestsListId, requestRecord.id, updateFields);
     const requestRouteId = (requestRecord.uuid ?? '').trim() || requestRecord.id;
 
     if (normalizedRequestStatus === READY_FOR_ENGAGEMENT_STATUS) {
@@ -205,6 +211,7 @@ export async function GET(
     type VerifierCommentItem = {
       id: string;
       uuid?: string;
+      verificationComment?: string;
       verifierCommentText?: string;
       verifierDecisionCode?: string;
       verifiedBy?: string;
@@ -221,13 +228,14 @@ export async function GET(
       return item.id === id || uuid === id;
     });
 
-    if (!requestRecord || !(requestRecord.verifierCommentText ?? '').trim()) {
+    const savedComment = (requestRecord?.verificationComment ?? requestRecord?.verifierCommentText ?? '').trim();
+    if (!requestRecord || !savedComment) {
       return NextResponse.json(null);
     }
 
     return NextResponse.json({
       requestId: (requestRecord.uuid ?? '').trim() || requestRecord.id,
-      comment: requestRecord.verifierCommentText ?? '',
+      comment: savedComment,
       decisionCode: requestRecord.verifierDecisionCode ?? '',
       verifiedBy: requestRecord.verifiedBy ?? '',
       verifiedAt: requestRecord.verifiedAt ?? null,

@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth/get-current-user";
 import { hasRole } from "@/src/lib/auth/has-role";
 import { REQUEST_STATUS_MAP } from "@/src/constants/enums/requestStatus";
 import { loadReviewAcceptance } from "@/src/lib/requests/review-acceptance-load";
+import { findRequestByRouteId, userMatchesRequestCompany } from "@/lib/sharepoint/request-resolve";
+import { updateItem } from "@/lib/sharepoint/lists";
 
 const COMPLETE_REVIEW = REQUEST_STATUS_MAP.COMPLETE_REVIEW.label.toLowerCase();
 const PENDING_ENDORSE = REQUEST_STATUS_MAP.PENDING_ENDORSE.label;
 
 function canAccessReviewAcceptance(
   user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>,
-  requestCompanyId: string
+  request: NonNullable<Awaited<ReturnType<typeof findRequestByRouteId>>>,
 ) {
   const isAdmin = hasRole(user, "admin");
   const isHoc = hasRole(user, "hoc");
   if (!isAdmin && !isHoc) return { ok: false as const, reason: "forbidden" };
   if (isAdmin) return { ok: true as const };
-  if (!user.companyId || user.companyId !== requestCompanyId) {
+  if (!userMatchesRequestCompany(user, request)) {
     return { ok: false as const, reason: "company" };
   }
   return { ok: true as const };
@@ -77,16 +78,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "signUrl is required" }, { status: 400 });
     }
 
-    const requestRecord = await prisma.request.findUnique({
-      where: { id },
-      select: { id: true, status: true, companyId: true, hocReviewAcceptanceSignedAt: true },
-    });
-
-    if (!requestRecord) {
+    const requestRecord = await findRequestByRouteId(id);
+    if (!requestRecord?.id) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    const access = canAccessReviewAcceptance(user, requestRecord.companyId);
+    const access = canAccessReviewAcceptance(user, requestRecord);
     if (!access.ok) {
       const message =
         access.reason === "company"
@@ -95,10 +92,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: message }, { status: 403 });
     }
 
-    if ((requestRecord.status ?? '').trim().toLowerCase() !== COMPLETE_REVIEW) {
+    if ((requestRecord.status ?? "").trim().toLowerCase() !== COMPLETE_REVIEW) {
       return NextResponse.json(
         { error: "Submission is only allowed while the request is in Complete Review" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -110,31 +107,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       selectedCode === "1b" && code1bExceptions.length > 0 ? code1bExceptions.join(", ") : null;
     const reviewConclusionCode1bCommentFinal = selectedCode === "1b" ? code1bComment : null;
 
-    const now = new Date();
+    const now = new Date().toISOString();
+    const signerId = Number(user.id);
 
-    const updated = await prisma.request.update({
-      where: { id },
-      data: {
-        reviewConclusionCode1a: selectedCode === "1a",
-        reviewConclusionCode1b: selectedCode === "1b",
-        reviewConclusionCode1bComment: reviewConclusionCode1bCommentFinal,
-        reviewConclusionCode2: selectedCode === "2",
-        reviewConclusionCode3: selectedCode === "3",
-        reviewConclusionCode4: selectedCode === "4",
-        hocReviewAcceptanceSignUrl: signUrl,
-        hocReviewAcceptanceSignPublicId: signPublicId,
-        hocReviewAcceptanceSignedAt: now,
-        hocReviewAcceptanceSignerUserId: user.id,
-        status: PENDING_ENDORSE,
-      },
-      select: {
-        id: true,
-        status: true,
-        updatedAt: true,
-      },
+    const requestsListId = process.env.REQUESTS_LIST_ID;
+    if (!requestsListId) {
+      return NextResponse.json({ error: "REQUESTS_LIST_ID is not configured" }, { status: 500 });
+    }
+
+    const fields: Record<string, unknown> = {
+      reviewConclusionCode1a: selectedCode === "1a",
+      reviewConclusionCode1b: selectedCode === "1b",
+      reviewConclusionCode1bComment: reviewConclusionCode1bCommentFinal,
+      reviewConclusionCode2: selectedCode === "2",
+      reviewConclusionCode3: selectedCode === "3",
+      reviewConclusionCode4: selectedCode === "4",
+      hocReviewAcceptanceSignUrl: signUrl,
+      hocReviewAcceptanceSignPublicId: signPublicId ?? "",
+      hocReviewAcceptanceSignedAt: now,
+      status: PENDING_ENDORSE,
+      outcome: PENDING_ENDORSE,
+    };
+    if (Number.isFinite(signerId)) {
+      fields.hocReviewAcceptanceSignerLookupId = signerId;
+    }
+
+    await updateItem(requestsListId, requestRecord.id, fields);
+
+    return NextResponse.json({
+      id: (requestRecord.uuid ?? "").trim() || requestRecord.id,
+      status: PENDING_ENDORSE,
+      updatedAt: now,
     });
-
-    return NextResponse.json(updated);
   } catch (error) {
     console.error("review-acceptance POST:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

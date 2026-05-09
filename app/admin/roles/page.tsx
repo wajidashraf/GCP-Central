@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import prisma from '@/lib/prisma';
+import { listCompanies, listRoles, listUsers, parseRoles } from '@/lib/sharepoint/lists';
 import { getCurrentUser } from '@/src/lib/auth/get-current-user';
 import { USER_ROLES, USER_ROLE_LABELS, type UserRole } from '@/src/types/auth';
 import AddUserForm from './add-user-form';
@@ -81,53 +81,40 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
     );
   }
 
-  const [dbRoles, users, companies] = await Promise.all([
-    prisma.role.findMany({
-      select: {
-        slug: true,
-        name: true,
-      },
-    }),
-    prisma.user.findMany({
-      orderBy: { usernameLower: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        username: true,
-        primaryRole: true,
-        roles: true,
-        isActive: true,
-        company: {
-          select: {
-            companyName: true,
-            companyCode: true,
-          },
-        },
-      },
-    }),
-    prisma.company.findMany({
-      orderBy: { companyName: 'asc' },
-      select: {
-        id: true,
-        companyName: true,
-        companyCode: true,
-      },
-    }),
-  ]);
+  const [spRoles, users, companies] = await Promise.all([listRoles(), listUsers(), listCompanies()]);
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+  const usersWithCompany = users
+    .map((user) => {
+      const linkedCompany = user.companyId ? companyById.get(user.companyId) : undefined;
+      const companyName = linkedCompany?.companyName ?? linkedCompany?.Title ?? user.companyName ?? null;
+      const companyCode = linkedCompany?.companyCode ?? user.companyCode ?? null;
+
+      return {
+        ...user,
+        name: user.Title,
+        roles: parseRoles(user.roles),
+        company: companyName || companyCode ? { companyName, companyCode } : null,
+      };
+    })
+    .sort((left, right) => (left.usernameLower ?? '').localeCompare(right.usernameLower ?? ''));
 
   const roleNameMap: Map<UserRole, string> = new Map(
-    (dbRoles as Array<{ slug: string; name: string }>).map((role) => [
-      normalizeRole(role.slug),
-      role.name,
+    spRoles.map((role) => [
+      normalizeRole(role.slug ?? ''),
+      role.name ?? role.Title ?? USER_ROLE_LABELS[normalizeRole(role.slug ?? '')],
     ])
   );
   const roleOptions: Array<{ slug: UserRole; label: string }> = USER_ROLES.map((slug: UserRole) => ({
     slug,
     label: roleNameMap.get(slug) ?? USER_ROLE_LABELS[slug],
   }));
+  const companyOptions = companies.map((company) => ({
+    id: company.id,
+    companyName: company.companyName ?? company.Title ?? '',
+    companyCode: company.companyCode ?? '',
+  }));
   const filteredUsers = query
-    ? users.filter((user: typeof users[number]) => {
+    ? usersWithCompany.filter((user: typeof usersWithCompany[number]) => {
         const searchable = [
           user.name,
           user.email,
@@ -139,9 +126,9 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
           .toLowerCase();
         return searchable.includes(query);
       })
-    : users;
-  const totalUsers = users.length;
-  const activeUsers = users.filter((user: typeof users[number]) => user.isActive).length;
+    : usersWithCompany;
+  const totalUsers = usersWithCompany.length;
+  const activeUsers = usersWithCompany.filter((user: typeof usersWithCompany[number]) => user.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
 
   return (
@@ -208,7 +195,7 @@ export default async function AdminRolesPage({ searchParams }: AdminRolesPagePro
         ) : null}
       </div>
 
-      <AddUserForm roleOptions={roleOptions} companies={companies} />
+      <AddUserForm roleOptions={roleOptions} companies={companyOptions} />
 
       <div className="table-shell">
         <table>

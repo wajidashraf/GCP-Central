@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { getCurrentUser } from "@/src/lib/auth/get-current-user";
 import { hasRole } from "@/src/lib/auth/has-role";
+import { countSignaturesForSignatoryMember, deleteSignatoryMember } from "@/lib/sharepoint/signatories";
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await getCurrentUser();
@@ -15,20 +15,16 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const signatureCount = await prisma.requestSignature.count({
-      where: { signatoryMemberId: id },
-    });
+    const signatureCount = await countSignaturesForSignatoryMember(id);
 
     if (signatureCount > 0) {
       return NextResponse.json(
         { error: "Cannot remove a signatory who has already signed on a request." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    await prisma.signatoryMember.delete({
-      where: { id },
-    });
+    await deleteSignatoryMember(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {
